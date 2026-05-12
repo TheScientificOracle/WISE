@@ -251,6 +251,7 @@ const state = {
   mealSlot: null,              // 'breakfast' | 'lunch' | 'dinner' | 'snack' | null
   photoDescription: '',        // optional one-line hint sent alongside photo
   gapsExpandedMacro: null,     // 'cal' | 'protein' | 'fat' | 'carbs' | 'fibre' | null — clickable bars
+  gapsExpandedFatSubtype: null, // 'sat' | 'mono' | 'poly' | null — second level inside fat bar
   pwFeature: null,
   assumptionsExpanded: false,
   fuelActivity: 'strength',
@@ -324,10 +325,17 @@ function totalsFrom(items) {
       sat_fat:  +((a.sat_fat  + (n.sat_fat  || 0) * m).toFixed(1)),
       poly_fat: +((a.poly_fat + (n.poly_fat || 0) * m).toFixed(1)),
       mono_fat: +((a.mono_fat + (n.mono_fat || 0) * m).toFixed(1)),
-      carbs:    +((a.carbs    + (n.carbs    || 0) * m).toFixed(1)),
-      fibre:    +((a.fibre    + (n.fibre    || 0) * m).toFixed(1)),
+      carbs:     +((a.carbs     + (n.carbs     || 0) * m).toFixed(1)),
+      fibre:     +((a.fibre     + (n.fibre     || 0) * m).toFixed(1)),
+      vitamin_d: +((a.vitamin_d + (n.vitamin_d || 0) * m).toFixed(2)),
+      iron:      +((a.iron      + (n.iron      || 0) * m).toFixed(2)),
+      zinc:      +((a.zinc      + (n.zinc      || 0) * m).toFixed(2)),
+      magnesium: +((a.magnesium + (n.magnesium || 0) * m).toFixed(1)),
+      b12:       +((a.b12       + (n.b12       || 0) * m).toFixed(2)),
+      calcium:   +((a.calcium   + (n.calcium   || 0) * m).toFixed(1)),
+      potassium: +((a.potassium + (n.potassium || 0) * m).toFixed(1)),
     };
-  }, { cal: 0, protein: 0, fat: 0, sat_fat: 0, poly_fat: 0, mono_fat: 0, carbs: 0, fibre: 0 });
+  }, { cal: 0, protein: 0, fat: 0, sat_fat: 0, poly_fat: 0, mono_fat: 0, carbs: 0, fibre: 0, vitamin_d: 0, iron: 0, zinc: 0, magnesium: 0, b12: 0, calcium: 0, potassium: 0 });
 }
 function getGaps(totals, targets) {
   const recs = [];
@@ -382,7 +390,7 @@ async function saveMealLog(result) {
       confidence_note: result.confidenceNote || result.confidence || null,
       summary:         result.summary || null,
       photo_data_url:  photo,
-      totals:          { cal: totals.cal, protein: totals.protein, fat: totals.fat, sat_fat: totals.sat_fat, poly_fat: totals.poly_fat, mono_fat: totals.mono_fat, carbs: totals.carbs, fibre: totals.fibre },
+      totals:          { cal: totals.cal, protein: totals.protein, fat: totals.fat, sat_fat: totals.sat_fat, poly_fat: totals.poly_fat, mono_fat: totals.mono_fat, carbs: totals.carbs, fibre: totals.fibre, vitamin_d: totals.vitamin_d, iron: totals.iron, zinc: totals.zinc, magnesium: totals.magnesium, b12: totals.b12, calcium: totals.calcium, potassium: totals.potassium },
       context:         state.mealSlot ? { slot: state.mealSlot } : null,
     });
     if (error) throw error;
@@ -402,7 +410,7 @@ async function loadMealLogs() {
       .select('*')
       .eq('user_id', state.user.id)   // explicit filter — required for some RLS configs
       .order('logged_at', { ascending: false })
-      .limit(10);
+      .limit(30);
     if (error) throw error;
     setState({ mealLogs: data || [], mealLogsLoading: false });
   } catch(e) {
@@ -467,7 +475,7 @@ const SCHEMA = `{
       "estimatedG": 100,
       "confidence": "High | Medium | Low",
       "reasoning": "Specific visual or contextual reasoning for this identification and gram estimate",
-      "per100": { "cal": 0, "protein": 0, "fat": 0, "sat_fat": 0, "poly_fat": 0, "mono_fat": 0, "carbs": 0, "fibre": 0 }
+      "per100": { "cal": 0, "protein": 0, "fat": 0, "sat_fat": 0, "poly_fat": 0, "mono_fat": 0, "carbs": 0, "fibre": 0, "vitamin_d": 0, "iron": 0, "zinc": 0, "magnesium": 0, "b12": 0, "calcium": 0, "potassium": 0 }
     }
   ],
   "assumptions": ["Each assumption made, stated plainly"],
@@ -489,7 +497,8 @@ Rules:
 - Reasoning must reference specific visual cues: colour, texture, shape, plate coverage
 - Be honest — if you cannot identify something, say so
 - AMBIGUITY RULE: Only applies to photo analysis. Set "ambiguous": true when individual ingredients cannot be reliably identified from the photo. This includes: blended drinks (smoothies, shakes, juices), soups, curries, stews, dal, sauces where composition is unknown (white sauce = cream? yogurt? béchamel?), pies or pastries with hidden fillings, sandwiches/wraps where interior is not visible, and any dish where macro estimates would be unreliable. When ambiguous is true, set "identified": [] and write a specific one-sentence ambiguityReason explaining exactly what makes this photo unanalysable. If the user has provided a text description of the meal, NEVER set ambiguous: true — analyse what they have described.
-- MILK ALTERNATIVES IN COFFEE: When a milk alternative (oat milk, coconut milk, almond milk, soy milk) is used in a coffee drink (flat white, latte, cappuccino, cortado), always use barista-grade nutritional values — these are heavily diluted (~10–15% coconut or oat content) and have ~30–50 kcal and 1–4g fat per 100ml. Do NOT use cooking/tinned coconut milk values (which are ~180 kcal and 17–19g fat per 100ml). A coconut milk flat white or oat milk latte contains barista milk, not cooking milk.`;
+- MILK ALTERNATIVES IN COFFEE: When a milk alternative (oat milk, coconut milk, almond milk, soy milk) is used in a coffee drink (flat white, latte, cappuccino, cortado), always use barista-grade nutritional values — these are heavily diluted (~10–15% coconut or oat content) and have ~30–50 kcal and 1–4g fat per 100ml. Do NOT use cooking/tinned coconut milk values (which are ~180 kcal and 17–19g fat per 100ml). A coconut milk flat white or oat milk latte contains barista milk, not cooking milk.
+- MICRONUTRIENTS: For every ingredient's per100 object, populate all 7 micronutrient fields using USDA FoodData Central data: vitamin_d (µg/100g), iron (mg/100g), zinc (mg/100g), magnesium (mg/100g), b12 (µg/100g), calcium (mg/100g), potassium (mg/100g). These are required — do not omit or leave as 0 unless the food genuinely contains none. Use 0 only if the nutrient is truly absent (e.g. b12 in plant foods).`;
 
 function extractJSON(text) {
   let clean = String(text).trim()
@@ -1202,6 +1211,251 @@ function getMacroContributors(todayLogs, macroKey) {
   return Object.values(merged).sort((a, b) => b.val - a.val);
 }
 
+// ─── Fat subtype bar (second level inside fat bar) ───────────────────────────
+function fatSubtypeRow(subtypeKey, label, value, totalFat, color, todayLogs) {
+  if (value <= 0) return '';
+  const isOpen = state.gapsExpandedFatSubtype === subtypeKey;
+  const pct    = totalFat > 0 ? Math.min(Math.round(value / totalFat * 100), 100) : 0;
+  const contribs = getMacroContributors(todayLogs, subtypeKey).slice(0, 5);
+  return `
+    <div style="margin-bottom:6px">
+      <button onclick="setState({gapsExpandedFatSubtype:state.gapsExpandedFatSubtype==='${subtypeKey}'?null:'${subtypeKey}'})"
+        style="width:100%;background:none;border:none;padding:6px 10px;cursor:pointer;text-align:left;border-radius:8px;background:rgba(0,0,0,0.02)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:12px;color:#374151;font-weight:500">${label}</span>
+            ${subtypeKey === 'sat' ? `<span style="font-size:10px;color:#dc2626">· limit</span>` : `<span style="font-size:10px;color:#16a34a">· healthy</span>`}
+          </div>
+          <span style="font-family:monospace;font-size:12px;font-weight:700;color:${color}">${value}g <span style="font-weight:400;color:var(--muted)">(${pct}%)</span> <span style="font-size:10px;color:var(--muted)">${isOpen?'▲':'▼'}</span></span>
+        </div>
+        <div style="height:3px;background:#e5e7eb;border-radius:99px">
+          <div style="height:100%;width:${pct}%;background:${color};border-radius:99px;opacity:0.7"></div>
+        </div>
+      </button>
+      ${isOpen && contribs.length > 0 ? `
+      <div style="margin:4px 0 4px 10px;padding:8px 10px;background:#f9fafb;border-radius:8px;border-left:2px solid ${color}">
+        ${contribs.map((c, i) => {
+          const barW = Math.round((c.val / (contribs[0]?.val || 1)) * 100);
+          return `
+          <div style="${i < contribs.length - 1 ? 'margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid #f3f4f6' : ''}">
+            <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+              <span style="font-size:11px;color:#374151">${c.name}</span>
+              <span style="font-size:11px;font-family:monospace;color:${color};font-weight:700">${c.val}g</span>
+            </div>
+            <div style="height:2px;background:#e5e7eb;border-radius:99px">
+              <div style="height:100%;width:${barW}%;background:${color};border-radius:99px;opacity:0.5"></div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>` : ''}
+    </div>`;
+}
+
+// ─── Micronutrient helpers ────────────────────────────────────────────────────
+const MICRO_META = {
+  vitamin_d: { label: 'Vitamin D', unit: 'µg', emoji: '☀️', decimals: 1 },
+  iron:      { label: 'Iron',      unit: 'mg', emoji: '🩸', decimals: 1 },
+  zinc:      { label: 'Zinc',      unit: 'mg', emoji: '🔩', decimals: 1 },
+  magnesium: { label: 'Magnesium', unit: 'mg', emoji: '💪', decimals: 0 },
+  b12:       { label: 'Vitamin B12', unit: 'µg', emoji: '⚡', decimals: 1 },
+  calcium:   { label: 'Calcium',   unit: 'mg', emoji: '🦴', decimals: 0 },
+  potassium: { label: 'Potassium', unit: 'mg', emoji: '🍌', decimals: 0 },
+};
+
+function getMicroRDAs(profile) {
+  const male = (profile.sex || 'male') === 'male';
+  const age  = profile.age || 30;
+  return {
+    vitamin_d: 15,
+    iron:      male ? 8 : (age < 51 ? 18 : 8),
+    zinc:      male ? 11 : 8,
+    magnesium: male ? (age < 31 ? 400 : 420) : (age < 31 ? 310 : 320),
+    b12:       2.4,
+    calcium:   age < 51 ? 1000 : 1200,
+    potassium: male ? 3400 : 2600,
+  };
+}
+
+function getMicroOrder(goal) {
+  const orders = {
+    fat:    ['iron','b12','potassium','vitamin_d','zinc','magnesium','calcium'],
+    muscle: ['vitamin_d','zinc','magnesium','iron','b12','calcium','potassium'],
+    fuel:   ['magnesium','potassium','iron','vitamin_d','zinc','b12','calcium'],
+    recomp: ['vitamin_d','zinc','magnesium','iron','b12','potassium','calcium'],
+  };
+  return orders[goal] || orders.fuel;
+}
+
+function renderMicronutrientsL1(todayLogs, profile) {
+  const rdas  = getMicroRDAs(profile);
+  const order = getMicroOrder(profile.goal);
+
+  // Sum micronutrients from today's logs
+  const totals = {};
+  Object.keys(MICRO_META).forEach(k => { totals[k] = 0; });
+  todayLogs.forEach(log => {
+    const t = log.totals || {};
+    Object.keys(MICRO_META).forEach(k => { totals[k] = +((totals[k] + (t[k] || 0)).toFixed(3)); });
+  });
+
+  const hasAnyData = Object.keys(MICRO_META).some(k => totals[k] > 0);
+
+  return `
+  <div class="card" style="margin-bottom:12px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:16px">🔬</span>
+        <div class="label" style="margin-bottom:0">Micronutrients</div>
+      </div>
+    </div>
+    <p style="font-size:11px;color:var(--muted);margin-bottom:14px;font-style:italic">Directional estimates · goal-priority order · log more meals for accuracy</p>
+    ${todayLogs.length < 2 && !hasAnyData
+      ? `<div style="text-align:center;padding:16px 0;font-size:13px;color:var(--muted)">Log at least 2 meals to see micronutrient coverage</div>`
+      : order.map(key => {
+          const meta  = MICRO_META[key];
+          const rda   = rdas[key];
+          const val   = totals[key];
+          const pct   = rda > 0 ? Math.min(Math.round(val / rda * 100), 100) : 0;
+          const color = pct >= 75 ? '#16a34a' : pct >= 40 ? '#d97706' : '#dc2626';
+          const band  = pct >= 75 ? 'good' : pct >= 40 ? 'low' : 'very low';
+          const valStr = val.toFixed(meta.decimals);
+          const rdaStr = rda % 1 === 0 ? rda : rda.toFixed(1);
+          return `
+          <div style="margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+              <div style="display:flex;align-items:center;gap:5px">
+                <span style="font-size:13px">${meta.emoji}</span>
+                <span style="font-size:12px;color:#374151;font-weight:500">${meta.label}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px">
+                <span style="font-size:10px;font-family:monospace;color:${color};background:${color}18;padding:1px 6px;border-radius:99px;text-transform:uppercase;font-weight:600">${band}</span>
+                <span style="font-size:11px;font-family:monospace;color:var(--subtle)">${valStr}/${rdaStr}${meta.unit}</span>
+              </div>
+            </div>
+            <div style="height:4px;background:#e5e7eb;border-radius:99px">
+              <div style="height:100%;width:${pct}%;background:${color};border-radius:99px;transition:width 0.3s"></div>
+            </div>
+          </div>`;
+        }).join('')}
+  </div>`;
+}
+
+function renderMicronutrientsL2(allLogs, profile) {
+  // Activation threshold: 7+ meals across 3+ distinct days
+  const distinctDays = new Set(allLogs.map(l => new Date(l.logged_at).toDateString())).size;
+  if (allLogs.length < 7 || distinctDays < 3) return '';
+
+  const rdas  = getMicroRDAs(profile);
+  const order = getMicroOrder(profile.goal);
+
+  // Compute average daily totals across the available logs
+  // Group by day, sum per day, then average
+  const byDay = {};
+  allLogs.forEach(log => {
+    const dayKey = new Date(log.logged_at).toDateString();
+    if (!byDay[dayKey]) { byDay[dayKey] = {}; Object.keys(MICRO_META).forEach(k => byDay[dayKey][k] = 0); }
+    const t = log.totals || {};
+    Object.keys(MICRO_META).forEach(k => { byDay[dayKey][k] += (t[k] || 0); });
+  });
+  const days = Object.values(byDay);
+  const nDays = days.length;
+  const avg = {};
+  Object.keys(MICRO_META).forEach(k => {
+    avg[k] = +( days.reduce((s, d) => s + d[k], 0) / nDays ).toFixed(3);
+  });
+
+  // Only show nutrients that are amber or red in weekly pattern
+  const flagged = order.filter(k => {
+    const pct = rdas[k] > 0 ? avg[k] / rdas[k] * 100 : 100;
+    return pct < 75;
+  });
+
+  if (flagged.length === 0) {
+    return `
+    <div class="card" style="margin-bottom:12px;background:#f0fdf4;border-color:#bbf7d0">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:18px">✅</span>
+        <div>
+          <div style="font-size:13px;font-weight:600;color:#15803d">Weekly pattern looks solid</div>
+          <div style="font-size:12px;color:#16a34a">All 7 tracked micronutrients are broadly covered across the last ${nDays} days.</div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // Bioavailability flags
+  const bioFlags = [];
+  const ironSources = allLogs.flatMap(l => (l.meal_data || [])
+    .filter(item => (item.per100?.iron || 0) > 0.5)
+    .map(item => item.name.toLowerCase()));
+  const plantIronWords = ['spinach','lentil','chickpea','tofu','bean','kale','oat','broccoli','pea','tempeh','hemp','quinoa'];
+  const animalIronWords = ['beef','lamb','pork','chicken','turkey','liver','tuna','salmon','sardine','egg'];
+  const hasPlantIron  = ironSources.some(n => plantIronWords.some(w => n.includes(w)));
+  const hasAnimalIron = ironSources.some(n => animalIronWords.some(w => n.includes(w)));
+  if (flagged.includes('iron') && hasPlantIron && !hasAnimalIron) {
+    bioFlags.push('Your iron is mostly non-heme (plant-based) — it absorbs 2–15% vs 15–35% for meat sources. Pair iron-rich foods with vitamin C (peppers, tomatoes, citrus) to improve absorption.');
+  }
+  const ironPct = rdas.iron > 0 ? avg.iron / rdas.iron * 100 : 100;
+  const calcPct = rdas.calcium > 0 ? avg.calcium / rdas.calcium * 100 : 100;
+  const vitdPct = rdas.vitamin_d > 0 ? avg.vitamin_d / rdas.vitamin_d * 100 : 100;
+  if (calcPct >= 75 && vitdPct < 40) {
+    bioFlags.push('You\'re getting enough calcium but vitamin D is consistently low — vitamin D is required to absorb calcium properly. Consider fatty fish (salmon, sardines) or egg yolks.');
+  }
+  const highPhytateFoods = allLogs.flatMap(l => (l.meal_data||[]).map(i => i.name.toLowerCase()))
+    .filter(n => ['oat','lentil','chickpea','bean','whole wheat','bran','soy'].some(w => n.includes(w)));
+  if (flagged.includes('zinc') && highPhytateFoods.length > 3) {
+    bioFlags.push('High-phytate foods (oats, legumes) in your diet can block zinc absorption. Soaking or fermenting them helps, or add zinc from meat and seeds alongside.');
+  }
+
+  // Food fix suggestions (concise, tailored to what they eat)
+  const foodFixes = {
+    vitamin_d: 'Salmon, sardines, or egg yolks 3×/week covers most of it. Or a daily vitamin D3 supplement.',
+    iron:      'Lean red meat 2–3×/week. If plant-based: lentils + red pepper in the same meal.',
+    zinc:      'Pumpkin seeds (1 tbsp = ~2mg zinc) on salads or oats. Or lean red meat.',
+    magnesium: 'Dark chocolate, almonds, spinach, or pumpkin seeds. Easy to add to existing meals.',
+    b12:       'Eggs, meat, or dairy cover this easily. If plant-based, B12 supplementation is essential.',
+    calcium:   'Yogurt, milk, hard cheese, or fortified oat milk. One serving gets you 25–30% of RDA.',
+    potassium: 'Banana, sweet potato, spinach, or avocado. Widely available in whole foods.',
+  };
+
+  return `
+  <div class="card" style="margin-bottom:12px;background:linear-gradient(135deg,#fefce8 0%,#ffffff 100%);border-color:#fde68a">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <span style="font-size:16px">📊</span>
+      <div>
+        <div style="font-size:13px;font-weight:600;color:#92400e">Weekly pattern — ${nDays} days</div>
+        <div style="font-size:11px;color:#b45309">${flagged.length} nutrient${flagged.length!==1?'s':''} consistently low</div>
+      </div>
+    </div>
+    ${flagged.map(key => {
+      const meta = MICRO_META[key];
+      const pct  = Math.round(avg[key] / rdas[key] * 100);
+      const color = pct >= 40 ? '#d97706' : '#dc2626';
+      const avgStr = avg[key].toFixed(meta.decimals);
+      const rdaStr = rdas[key] % 1 === 0 ? rdas[key] : rdas[key].toFixed(1);
+      return `
+      <div style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid #fde68a">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <div style="display:flex;align-items:center;gap:5px">
+            <span style="font-size:13px">${meta.emoji}</span>
+            <span style="font-size:13px;font-weight:600;color:#374151">${meta.label}</span>
+          </div>
+          <span style="font-size:11px;font-family:monospace;color:${color}">${pct}% of RDA avg</span>
+        </div>
+        <div style="font-size:12px;color:#374151;line-height:1.5;margin-bottom:6px">${foodFixes[key]}</div>
+        <div style="height:3px;background:#e5e7eb;border-radius:99px">
+          <div style="height:100%;width:${Math.min(pct,100)}%;background:${color};border-radius:99px"></div>
+        </div>
+      </div>`;
+    }).join('')}
+    ${bioFlags.length > 0 ? `
+    <div style="margin-top:4px">
+      <div class="mono" style="font-size:10px;color:#92400e;letter-spacing:.08em;margin-bottom:8px">ABSORPTION NOTES</div>
+      ${bioFlags.map(f => `<div style="font-size:12px;color:#374151;line-height:1.5;margin-bottom:8px;padding-left:8px;border-left:2px solid #fbbf24">${f}</div>`).join('')}
+    </div>` : ''}
+  </div>`;
+}
+
 function renderRecentMeals() {
   if (state.mealLogsLoading) {
     return `<div style="margin-top:24px;text-align:center;padding:16px 0">
@@ -1317,12 +1571,6 @@ function renderHome() {
       <div style="font-size:26px;margin-bottom:8px">🍽️</div>
       <div class="home-card-title">Analyse a meal</div>
       <div style="font-size:13px;color:#9ca3af;line-height:1.5">Upload a photo or describe your meal. AI analysis — WISE shows its workings.</div>
-    </button>
-
-    <button class="home-card-free" onclick="setState({screen:'fuel',fuelPlan:null,fuelError:null})">
-      <div style="font-size:26px;margin-bottom:8px">⚡</div>
-      <div class="home-card-title">Plan my fuel</div>
-      <div style="font-size:13px;color:var(--muted);line-height:1.5">Tell me what you're doing today. Get a precise ingredient-level fuel plan.</div>
     </button>
 
     <button class="home-card-free" onclick="setState({screen:'gaps'})">
@@ -2146,13 +2394,20 @@ function renderGaps() {
       cal:      Math.round(acc.cal      + (t.cal      || 0)),
       protein:  +((acc.protein  + (t.protein  || 0)).toFixed(1)),
       fat:      +((acc.fat      + (t.fat      || 0)).toFixed(1)),
-      sat_fat:  +((acc.sat_fat  + (t.sat_fat  || 0)).toFixed(1)),
-      poly_fat: +((acc.poly_fat + (t.poly_fat || 0)).toFixed(1)),
-      mono_fat: +((acc.mono_fat + (t.mono_fat || 0)).toFixed(1)),
-      carbs:    +((acc.carbs    + (t.carbs    || 0)).toFixed(1)),
-      fibre:    +((acc.fibre    + (t.fibre    || 0)).toFixed(1)),
+      sat_fat:   +((acc.sat_fat   + (t.sat_fat   || 0)).toFixed(1)),
+      poly_fat:  +((acc.poly_fat  + (t.poly_fat  || 0)).toFixed(1)),
+      mono_fat:  +((acc.mono_fat  + (t.mono_fat  || 0)).toFixed(1)),
+      carbs:     +((acc.carbs     + (t.carbs     || 0)).toFixed(1)),
+      fibre:     +((acc.fibre     + (t.fibre     || 0)).toFixed(1)),
+      vitamin_d: +((acc.vitamin_d + (t.vitamin_d || 0)).toFixed(3)),
+      iron:      +((acc.iron      + (t.iron      || 0)).toFixed(3)),
+      zinc:      +((acc.zinc      + (t.zinc      || 0)).toFixed(3)),
+      magnesium: +((acc.magnesium + (t.magnesium || 0)).toFixed(1)),
+      b12:       +((acc.b12       + (t.b12       || 0)).toFixed(3)),
+      calcium:   +((acc.calcium   + (t.calcium   || 0)).toFixed(1)),
+      potassium: +((acc.potassium + (t.potassium || 0)).toFixed(1)),
     };
-  }, { cal: 0, protein: 0, fat: 0, sat_fat: 0, poly_fat: 0, mono_fat: 0, carbs: 0, fibre: 0 });
+  }, { cal: 0, protein: 0, fat: 0, sat_fat: 0, poly_fat: 0, mono_fat: 0, carbs: 0, fibre: 0, vitamin_d: 0, iron: 0, zinc: 0, magnesium: 0, b12: 0, calcium: 0, potassium: 0 });
 
   const gaps   = getGaps(running, targets);
   const calPct = targets.cal > 0 ? Math.round(running.cal / targets.cal * 100) : 0;
@@ -2177,18 +2432,14 @@ function renderGaps() {
       ${clickableTrackerBar('cal',     'Calories', running.cal,     targets.cal,     '#374151',       ' kcal', getMacroContributors(todayLogs, 'cal'))}
       ${clickableTrackerBar('protein', 'Protein',  running.protein, targets.protein, 'var(--protein)', 'g',     getMacroContributors(todayLogs, 'protein'))}
       ${clickableTrackerBar('carbs',   'Carbs',    running.carbs,   targets.carbs,   'var(--carbs)',   'g',     getMacroContributors(todayLogs, 'carbs'))}
-      ${clickableTrackerBar('fat',     'Fat',      running.fat,     targets.fat,     'var(--fat)',     'g',     getMacroContributors(todayLogs, 'fat'))}
-      ${state.gapsExpandedMacro === 'fat' && (running.sat_fat > 0 || running.poly_fat > 0 || running.mono_fat > 0) ? `
-      <div style="margin-top:-8px;margin-bottom:14px;padding:10px 14px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px">
-        <div class="mono" style="font-size:10px;color:var(--muted);letter-spacing:.08em;margin-bottom:8px">FAT BREAKDOWN</div>
-        ${[['Saturated', running.sat_fat, '#dc2626'], ['Monounsaturated', running.mono_fat, '#16a34a'], ['Polyunsaturated', running.poly_fat, '#0284c7']].map(([lbl, val, col]) => val > 0 ? `
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
-          <div>
-            <span style="font-size:12px;color:#374151">${lbl}</span>
-            ${lbl === 'Saturated' ? `<span style="font-size:10px;color:#dc2626;margin-left:4px">· limit</span>` : `<span style="font-size:10px;color:#16a34a;margin-left:4px">· healthy</span>`}
-          </div>
-          <span style="font-size:13px;font-weight:700;font-family:monospace;color:${col}">${val}g</span>
-        </div>` : '').join('')}
+      ${clickableTrackerBar('fat', 'Fat', running.fat, targets.fat, 'var(--fat)', 'g', [])}
+      ${state.gapsExpandedMacro === 'fat' ? `
+      <div style="margin-top:-6px;margin-bottom:14px;padding:10px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px">
+        <div class="mono" style="font-size:10px;color:var(--muted);letter-spacing:.08em;margin-bottom:8px">FAT BREAKDOWN — tap a type to see sources</div>
+        ${fatSubtypeRow('sat',  'Saturated',      running.sat_fat,  running.fat, '#dc2626', todayLogs)}
+        ${fatSubtypeRow('mono', 'Monounsaturated', running.mono_fat, running.fat, '#16a34a', todayLogs)}
+        ${fatSubtypeRow('poly', 'Polyunsaturated', running.poly_fat, running.fat, '#0284c7', todayLogs)}
+        ${running.sat_fat === 0 && running.mono_fat === 0 && running.poly_fat === 0 ? `<div style="font-size:12px;color:var(--muted);font-style:italic">No fat subtype data yet — analyse more meals to see breakdown.</div>` : ''}
       </div>` : ''}
       ${clickableTrackerBar('fibre',   'Fibre',    running.fibre,   targets.fibre,   'var(--fibre)',   'g',     getMacroContributors(todayLogs, 'fibre'))}
     </div>
@@ -2207,8 +2458,11 @@ function renderGaps() {
         </div>`).join('') : `<p style="font-size:13px;color:#16a34a;margin:0">✓ You're hitting your macro targets today — great work.</p>`}
     </div>
 
-    <!-- Micronutrients -->
-    ${renderMicroNudge(state.profile.goal)}
+    <!-- Micronutrients L1 (today) -->
+    ${renderMicronutrientsL1(todayLogs, state.profile)}
+
+    <!-- Micronutrients L2 (weekly pattern — activates after 7 meals / 3 days) -->
+    ${renderMicronutrientsL2(state.mealLogs, state.profile)}
 
     <!-- Slot-based meal view -->
     ${(() => {
@@ -2296,6 +2550,8 @@ function renderGaps() {
     })()}
 
     <button class="btn-primary" onclick="setState({screen:'analyse',analyseTab:'photo',photoDataUrls:[],mealText:'',mealContext:null,restaurantName:'',restaurantLocation:'',mealSlot:null,photoDescription:'',analysisResult:null,analysisError:null,analysing:false,viewingLog:null,mealSaveError:null})">+ Analyse a meal</button>
+
+    <button class="btn-secondary" style="margin-top:10px" onclick="setState({screen:'fuel',fuelPlan:null,fuelError:null})">⚡ Plan the rest of my day →</button>
 
     <div class="mono" style="margin-top:16px;text-align:center;font-size:11px;color:#d1d5db">Values from USDA FoodData Central · Mifflin-St Jeor BMR</div>`;
 }
