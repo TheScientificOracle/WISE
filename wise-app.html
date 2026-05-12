@@ -1,0 +1,2414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WISE — What I Should Eat</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f9fafb;
+    --card: #ffffff;
+    --border: #e5e7eb;
+    --text: #111111;
+    --muted: #9ca3af;
+    --subtle: #6b7280;
+    --protein: #3b82f6; --protein-bg: #eff6ff;
+    --fat:     #f59e0b; --fat-bg:     #fffbeb;
+    --carbs:   #10b981; --carbs-bg:   #f0fdf4;
+    --fibre:   #8b5cf6; --fibre-bg:   #f5f3ff;
+    --conf-high: #16a34a; --conf-high-bg: #f0fdf4;
+    --conf-med:  #d97706; --conf-med-bg:  #fffbeb;
+    --conf-low:  #dc2626; --conf-low-bg:  #fef2f2;
+    --radius: 16px;
+    --shadow: 0 1px 4px rgba(0,0,0,0.04);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  #app {
+    max-width: 500px;
+    margin: 0 auto;
+    padding: 24px 16px 48px;
+  }
+  .mono { font-family: 'SF Mono', 'Fira Code', monospace; }
+  .italic { font-style: italic; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    box-shadow: var(--shadow);
+    margin-bottom: 12px;
+  }
+  .label {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: 'SF Mono', monospace;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+
+  button { cursor: pointer; font-family: inherit; border: none; }
+  .btn-primary {
+    width: 100%; padding: 14px; background: #111; color: white;
+    border-radius: 14px; font-size: 15px; font-weight: 600;
+    border: none; cursor: pointer; margin-top: 12px;
+  }
+  .btn-primary:disabled { background: #f3f4f6; color: var(--muted); cursor: default; }
+  .btn-secondary {
+    width: 100%; padding: 13px; background: white; color: var(--subtle);
+    border-radius: 14px; font-size: 14px; border: 1px solid var(--border);
+    cursor: pointer; margin-top: 8px;
+  }
+  .btn-back {
+    background: none; border: none; color: var(--subtle);
+    font-size: 13px; padding: 0; margin-bottom: 20px;
+    display: flex; align-items: center; gap: 6px; cursor: pointer;
+  }
+
+  .tabs {
+    display: flex; background: #f3f4f6; border-radius: 14px;
+    padding: 4px; margin-bottom: 20px; gap: 4px;
+  }
+  .tab {
+    flex: 1; padding: 9px 0; border-radius: 10px; border: none;
+    font-size: 13px; font-weight: 500; cursor: pointer;
+    background: transparent; color: var(--muted); transition: all 0.2s;
+  }
+  .tab.active { background: white; color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+
+  .macro-bar-row { margin-bottom: 14px; }
+  .macro-bar-row-head { display: flex; justify-content: space-between; margin-bottom: 5px; }
+  .macro-bar-track { height: 6px; background: #f3f4f6; border-radius: 99px; overflow: hidden; }
+  .macro-bar-fill { height: 100%; border-radius: 99px; transition: width 0.8s ease; }
+
+  .totals-strip {
+    background: #f9fafb; border: 1px solid var(--border);
+    border-radius: 14px; padding: 12px 16px; margin-bottom: 12px;
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px;
+  }
+  .totals-cell { text-align: center; }
+  .totals-val { font-size: 15px; font-weight: 700; }
+  .totals-lbl { font-size: 9px; color: var(--muted); font-family: monospace; text-transform: uppercase; margin-top: 2px; }
+
+  .badge {
+    font-size: 10px; padding: 2px 8px; border-radius: 99px;
+    font-family: monospace; display: inline-block; font-weight: 600;
+  }
+  .badge-high   { background: var(--conf-high-bg); color: var(--conf-high); }
+  .badge-medium { background: var(--conf-med-bg);  color: var(--conf-med); }
+  .badge-low    { background: var(--conf-low-bg);  color: var(--conf-low); }
+
+  .impact {
+    min-width: 56px; height: 22px; border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-family: monospace; letter-spacing: 0.05em;
+    font-weight: 600; flex-shrink: 0; margin-top: 2px;
+  }
+  .impact-HIGH   { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
+  .impact-MEDIUM { background: #fff7ed; border: 1px solid #fed7aa; color: #ea580c; }
+  .impact-LOW    { background: #fefce8; border: 1px solid #fde68a; color: #d97706; }
+  .impact-GOOD   { background: #f0fdf4; border: 1px solid #bbf7d0; color: #16a34a; }
+
+  .upload-zone {
+    border: 2px dashed #d1d5db; border-radius: var(--radius);
+    padding: 40px 20px; background: #f9fafb; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 10px; text-align: center; margin-bottom: 12px;
+    transition: border-color 0.2s;
+  }
+  .upload-zone:hover { border-color: #9ca3af; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
+  .spinner {
+    width: 32px; height: 32px;
+    border: 3px solid #e5e7eb; border-top-color: #111;
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+    margin: 0 auto 16px;
+  }
+
+  .warning {
+    background: #fffbeb; border: 1px solid #fde68a;
+    border-radius: 12px; padding: 12px 14px; margin-bottom: 14px;
+    display: flex; gap: 10px; align-items: flex-start;
+  }
+  .warning-icon { font-size: 18px; flex-shrink: 0; }
+  .warning-title { font-size: 13px; font-weight: 600; color: #92400e; margin-bottom: 3px; }
+  .warning-body  { font-size: 12px; color: #a16207; line-height: 1.6; }
+
+  .info-box {
+    background: #f9fafb; border: 1px solid var(--border);
+    border-radius: 12px; padding: 12px 14px; margin-bottom: 14px;
+    display: flex; gap: 10px; font-size: 12px; color: var(--subtle); line-height: 1.6;
+  }
+  .error-box {
+    background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px;
+    padding: 14px 16px; margin-bottom: 12px; font-size: 13px; color: #dc2626; line-height: 1.6;
+  }
+
+  .ing-row {
+    padding: 12px 0; border-bottom: 1px solid #f9fafb;
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+  }
+  .ing-row:last-child { border-bottom: none; padding-bottom: 0; }
+  .ing-emoji { font-size: 22px; flex-shrink: 0; margin-top: 2px; }
+  .ing-name  { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
+  .ing-note  { font-size: 12px; color: var(--subtle); font-style: italic; line-height: 1.5; }
+  .ing-right { text-align: right; flex-shrink: 0; }
+  .ing-grams { font-size: 14px; font-weight: 700; font-family: monospace; }
+
+  .profile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+  .field label  { font-size: 12px; color: var(--subtle); font-family: monospace; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; display: block; }
+  .field input  { width: 100%; border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; font-size: 15px; outline: none; font-family: inherit; }
+  .toggle-row   { display: flex; gap: 8px; }
+  .toggle { flex: 1; padding: 10px 0; border-radius: 10px; border: 1px solid var(--border); background: white; color: var(--subtle); font-size: 13px; font-weight: 500; cursor: pointer; }
+  .toggle.active { background: #111; color: white; border-color: #111; }
+
+  .goal-card { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 12px; border: 1px solid var(--border); background: white; cursor: pointer; margin-bottom: 8px; width: 100%; text-align: left; }
+  .goal-card.active { background: #111; border-color: #111; }
+  .goal-card.active .goal-title { color: white; }
+  .goal-card.active .goal-desc  { color: #9ca3af; }
+  .goal-emoji { font-size: 20px; }
+  .goal-title { font-size: 14px; font-weight: 500; color: var(--text); }
+  .goal-desc  { font-size: 12px; color: var(--muted); }
+
+  .home-card-free  { background: #111; color: white; border-radius: 18px; padding: 22px; text-align: left; border: none; cursor: pointer; width: 100%; margin-bottom: 10px; position: relative; }
+  .home-card-pro   { background: white; color: var(--text); border-radius: 18px; padding: 22px; text-align: left; border: 1px solid var(--border); cursor: pointer; width: 100%; margin-bottom: 10px; box-shadow: var(--shadow); position: relative; }
+  .home-card-title { font-size: 18px; font-weight: 600; margin-bottom: 4px; letter-spacing: -0.02em; }
+  .pill { font-size: 10px; padding: 3px 8px; border-radius: 99px; font-family: monospace; letter-spacing: 0.08em; position: absolute; top: 16px; right: 16px; }
+  .pill-free { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.8); }
+  .pill-pro  { background: #111; color: white; }
+
+  .expand-detail { margin-top: 10px; display: grid; grid-template-columns: repeat(4,1fr); gap: 6px; }
+  .expand-cell   { text-align: center; border-radius: 8px; padding: 6px 4px; }
+  .expand-val    { font-size: 13px; font-weight: 700; }
+  .expand-lbl    { font-size: 9px; color: var(--muted); font-family: monospace; text-transform: uppercase; margin-top: 1px; }
+
+  img.meal-photo { width: 100%; border-radius: 14px; object-fit: cover; max-height: 260px; display: block; margin-bottom: 12px; }
+
+  /* API key input */
+  .apikey-input {
+    width: 100%; border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 14px; font-size: 14px; outline: none; font-family: monospace;
+    letter-spacing: 0.05em; color: var(--text);
+  }
+  .apikey-input:focus { border-color: #111; }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+// ─── Supabase ─────────────────────────────────────────────────────────────────
+const SUPABASE_URL  = 'https://qpisyykqmivljpsqleul.supabase.co';
+const SUPABASE_ANON = 'sb_publishable_woWGWtBvw0FJJNaP7rC63A_y5ZSVBjp';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+// ─── State ────────────────────────────────────────────────────────────────────
+const savedProfile = JSON.parse(localStorage.getItem('wise_profile') || 'null');
+const savedSession = (() => {
+  try { return JSON.parse(localStorage.getItem('wise_session') || 'null'); } catch(e) { return null; }
+})();
+const state = {
+  screen: 'loading',   // starts loading, then routes after session check
+  user: null,
+  session: null,
+  authMode: 'login',   // 'login' | 'signup'
+  authEmail: '',
+  authPassword: '',
+  authError: null,
+  authLoading: false,
+  profile: savedProfile || { weight: 75, height: 175, age: 30, sex: 'male', goal: 'fuel' },
+  mealLogs: [],          // recent meals from Supabase
+  mealLogsLoading: false,
+  viewingLog: null,      // { result, photoDataUrl, analyseTab, mealContext, restaurantName, logged_at }
+  analyseTab: 'photo',
+  photoDataUrls: [],
+  mealText: '',
+  mealContext: null,       // 'home' | 'restaurant' | null
+  restaurantName: '',
+  restaurantLocation: '',
+  analysing: false,
+  analysisResult: null,
+  analysisError: null,
+  expandedIdx: null,
+  editingIdx: null,
+  editFetching: false,
+  homeTargetsExpanded: false,  // "how did we get here?" on home screen
+  mealSaveError: null,         // set if saveMealLog insert fails
+  ingredientsVerified: null,   // null | 'yes' | 'no'
+  ingredientsExpanded: false,
+  ingredientRows: [{name:'',qty:'',unit:'g'},{name:'',qty:'',unit:'g'},{name:'',qty:'',unit:'g'},{name:'',qty:'',unit:'g'}],
+  mealSlot: null,              // 'breakfast' | 'lunch' | 'dinner' | 'snack' | null
+  photoDescription: '',        // optional one-line hint sent alongside photo
+  pwFeature: null,
+  assumptionsExpanded: false,
+  fuelActivity: 'strength',
+  fuelEffort: 'moderate',
+  fuelWhen: 'afternoon',
+  fuelMeals: 3,
+  fuelTargetsExpanded: false,
+  fuelPlan: null,
+  fuelPlanning: false,
+  fuelError: null,
+};
+
+function setState(patch) {
+  // Reset ingredient verification when navigating away from results screen
+  if (patch.screen && patch.screen !== 'results') {
+    if (!('ingredientsVerified' in patch)) patch.ingredientsVerified = null;
+    if (!('ingredientsExpanded' in patch)) patch.ingredientsExpanded = false;
+  }
+  Object.assign(state, patch);
+  saveSessionState();
+  render();
+}
+
+function saveSessionState() {
+  try {
+    // photoDataUrls excluded — base64 images can exceed localStorage's ~5MB limit
+    // causing a silent save failure. The analysis result is what matters on restore.
+    localStorage.setItem('wise_session', JSON.stringify({
+      screen: state.screen,
+      analysisResult: state.analysisResult,
+      analyseTab: state.analyseTab,
+      mealText: state.mealText,
+      mealContext: state.mealContext,
+      restaurantName: state.restaurantName,
+      restaurantLocation: state.restaurantLocation,
+      viewingLog: state.viewingLog,
+      fuelPlan: state.fuelPlan,
+      fuelActivity: state.fuelActivity,
+      fuelEffort: state.fuelEffort,
+      fuelWhen: state.fuelWhen,
+      fuelMeals: state.fuelMeals,
+      ingredientsVerified: state.ingredientsVerified,
+      ingredientsExpanded: state.ingredientsExpanded,
+      mealSlot: state.mealSlot,
+      photoDescription: state.photoDescription,
+    }));
+  } catch(e) {}
+}
+
+// ─── Nutrition helpers ────────────────────────────────────────────────────────
+function calcBMR(p) {
+  return Math.round(10 * p.weight + 6.25 * p.height - 5 * p.age + (p.sex === 'male' ? 5 : -161));
+}
+function calcTargets(p) {
+  const bmr  = calcBMR(p);
+  const tdee = Math.round(bmr * 1.55);
+  const adj  = p.goal === 'fat' ? Math.round(tdee * 0.85) : p.goal === 'muscle' ? Math.round(tdee * 1.10) : tdee;
+  const protG = Math.round(p.weight * (p.goal === 'fat' ? 2.2 : p.goal === 'muscle' ? 2.0 : p.goal === 'recomp' ? 2.3 : 1.8));
+  const fatG  = Math.round((adj * (p.goal === 'fat' ? 0.30 : 0.25)) / 9);
+  const carbG = Math.round(Math.max((adj - protG * 4 - fatG * 9) / 4, 50));
+  return { cal: adj, protein: protG, fat: fatG, carbs: carbG, fibre: 30 };
+}
+function totalsFrom(items) {
+  return items.reduce((a, item) => {
+    const m = item.estimatedG / 100, n = item.per100 || {};
+    return {
+      cal:     Math.round(a.cal     + (n.cal     || 0) * m),
+      protein: +((a.protein + (n.protein || 0) * m).toFixed(1)),
+      fat:     +((a.fat     + (n.fat     || 0) * m).toFixed(1)),
+      carbs:   +((a.carbs   + (n.carbs   || 0) * m).toFixed(1)),
+      fibre:   +((a.fibre   + (n.fibre   || 0) * m).toFixed(1)),
+    };
+  }, { cal: 0, protein: 0, fat: 0, carbs: 0, fibre: 0 });
+}
+function getGaps(totals, targets) {
+  const recs = [];
+  const pg = targets.protein - totals.protein;
+  const cg = targets.carbs   - totals.carbs;
+  const fig= targets.fibre   - totals.fibre;
+  const fg = targets.fat     - totals.fat;
+  if (pg  > 10) recs.push({ label: 'Protein Gap', impact: 'HIGH',              text: `Need ~${Math.round(pg)}g more protein — chicken breast, eggs, Greek yogurt or a protein shake would all help.` });
+  if (cg  > 20) recs.push({ label: 'Carb Gap',    impact: cg > 50 ? 'HIGH' : 'MEDIUM', text: `Need ~${Math.round(cg)}g more carbs — sweet potato, rice, oats or a banana are good options.` });
+  if (fig >  5) recs.push({ label: 'Fibre Gap',   impact: 'MEDIUM',            text: `Need ~${Math.round(fig)}g more fibre — broccoli, chia seeds, lentils or an apple would do it.` });
+  if (fg  >  8) recs.push({ label: 'Fat Gap',     impact: 'LOW',               text: `Need ~${Math.round(fg)}g more healthy fat — avocado, walnuts, olive oil or salmon are good sources.` });
+  if (!recs.length) recs.push({ label: 'On Track', impact: 'GOOD',             text: 'Macros are well balanced for your goal. Nice work.' });
+  return recs;
+}
+
+// ─── Image compression ────────────────────────────────────────────────────────
+function compressImage(dataUrl, maxSize = 768, quality = 0.8) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const ratio = Math.min(maxSize / img.width, maxSize / img.height, 1);
+      const canvas = document.createElement('canvas');
+      canvas.width  = Math.round(img.width  * ratio);
+      canvas.height = Math.round(img.height * ratio);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.src = dataUrl;
+  });
+}
+
+// ─── Edge function calls ──────────────────────────────────────────────────────
+async function getToken() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) throw new Error('Not signed in. Please refresh and log in again.');
+  return session.access_token;
+}
+
+// ─── Meal log helpers ─────────────────────────────────────────────────────────
+async function saveMealLog(result) {
+  if (!state.user) return;
+  const totals = totalsFrom(result.identified || []);
+  const photo  = state.analyseTab === 'photo' && state.photoDataUrls.length > 0
+    ? state.photoDataUrls[0] : null;
+  try {
+    const { error } = await sb.from('meal_logs').insert({
+      user_id:         state.user.id,
+      input_type:      state.analyseTab,
+      meal_context:    state.mealContext,
+      restaurant_name: buildRestaurantLabel({ name: state.restaurantName, location: state.restaurantLocation }) || null,
+      meal_data:       result.identified || [],
+      confidence_note: result.confidenceNote || result.confidence || null,
+      summary:         result.summary || null,
+      photo_data_url:  photo,
+      totals:          { cal: totals.cal, protein: totals.protein, fat: totals.fat, carbs: totals.carbs, fibre: totals.fibre },
+      context:         state.mealSlot ? { slot: state.mealSlot } : null,
+    });
+    if (error) throw error;
+    loadMealLogs(); // refresh home screen list without awaiting
+  } catch(e) {
+    console.warn('saveMealLog failed:', e?.message || e);
+    setState({ mealSaveError: e?.message || 'Meal could not be saved.' });
+  }
+}
+
+async function loadMealLogs() {
+  if (!state.user) return;
+  setState({ mealLogsLoading: true });
+  try {
+    const { data, error } = await sb
+      .from('meal_logs')
+      .select('*')
+      .eq('user_id', state.user.id)   // explicit filter — required for some RLS configs
+      .order('logged_at', { ascending: false })
+      .limit(10);
+    if (error) throw error;
+    setState({ mealLogs: data || [], mealLogsLoading: false });
+  } catch(e) {
+    console.warn('loadMealLogs failed:', e?.message || e);
+    setState({ mealLogsLoading: false });
+  }
+}
+
+async function deleteMealLog(id) {
+  if (!confirm('Delete this meal?')) return;
+  try {
+    const { error } = await sb.from('meal_logs').delete().eq('id', id);
+    if (error) throw error;
+    // If currently viewing this log, go back home
+    if (state.viewingLog && state.viewingLog.id === id) {
+      setState({ screen: 'home', viewingLog: null, analysisResult: null });
+    }
+    await loadMealLogs();
+    if (state.screen === 'gaps') render(); // refresh gaps screen
+  } catch(e) {
+    alert('Could not delete meal: ' + (e.message || e));
+  }
+}
+
+async function callAnalyse(payload) {
+  const token = await getToken();
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/wise-analyse`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Server error ${res.status}`);
+  }
+  return res.json();
+}
+
+async function callFuel(payload) {
+  const token = await getToken();
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/wise-fuel`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Server error ${res.status}`);
+  }
+  return res.json();
+}
+
+// ─── Analysis prompts ─────────────────────────────────────────────────────────
+const SCHEMA = `{
+  "ambiguous": false,
+  "ambiguityReason": "Only populate if ambiguous is true — one plain sentence e.g. 'This is a blended smoothie — individual ingredients cannot be identified once mixed'",
+  "summary": "One plain sentence describing what this meal appears to be, e.g. 'This looks like a roasted chicken dinner with vegetables and potato salad.' Always starts with 'This looks like'.",
+  "identified": [
+    {
+      "name": "Food name",
+      "emoji": "appropriate single emoji",
+      "estimatedG": 100,
+      "confidence": "High | Medium | Low",
+      "reasoning": "Specific visual or contextual reasoning for this identification and gram estimate",
+      "per100": { "cal": 0, "protein": 0, "fat": 0, "carbs": 0, "fibre": 0 }
+    }
+  ],
+  "assumptions": ["Each assumption made, stated plainly"],
+  "confidence": "High | Medium | Low",
+  "confidenceNote": "One sentence on the main source of uncertainty"
+}`;
+
+const BASE_PROMPT = `You are WISE — What I Should Eat — a nutrition analysis AI.
+Identify every ingredient in this meal, estimate portion sizes in grams, and provide accurate nutritional values per 100g using USDA FoodData Central data.
+
+Return ONLY valid raw JSON matching this exact schema (no markdown, no code fences, no explanation):
+${SCHEMA}
+
+Rules:
+- List every visible ingredient separately, including sauces, oils, seeds, toppings
+- Use standard portion sizes when amounts are unclear (1 tbsp honey = 21g, 1 medium banana = 118g)
+- Per100 values must be accurate USDA data per 100g
+- Confidence reflects certainty about both identification AND portion estimate
+- Reasoning must reference specific visual cues: colour, texture, shape, plate coverage
+- Be honest — if you cannot identify something, say so
+- AMBIGUITY RULE: Only applies to photo analysis. Set "ambiguous": true when individual ingredients cannot be reliably identified from the photo. This includes: blended drinks (smoothies, shakes, juices), soups, curries, stews, dal, sauces where composition is unknown (white sauce = cream? yogurt? béchamel?), pies or pastries with hidden fillings, sandwiches/wraps where interior is not visible, and any dish where macro estimates would be unreliable. When ambiguous is true, set "identified": [] and write a specific one-sentence ambiguityReason explaining exactly what makes this photo unanalysable. If the user has provided a text description of the meal, NEVER set ambiguous: true — analyse what they have described.`;
+
+function extractJSON(text) {
+  let clean = String(text).trim()
+    .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+  try { return JSON.parse(clean); } catch(e) {}
+  const m = clean.match(/\{[\s\S]*\}/);
+  if (m) { try { return JSON.parse(m[0]); } catch(e) {} }
+  throw new Error('Could not parse response. Please try again.');
+}
+
+function buildAnalysisPrompt(context) {
+  let ctx = '';
+  if (context?.type === 'home') {
+    ctx = '\nCONTEXT: Home-cooked meal. Use standard home-cooking portion sizes and typical oil/seasoning amounts.';
+  } else if (context?.type === 'restaurant') {
+    const namePart = context.name ? ` at "${context.name}"` : '';
+    const locPart  = context.location ? ` (${context.location})` : '';
+    const ident    = context.name ? `"${context.name}"${locPart}` : null;
+    const dataNote = ident
+      ? ` If ${ident} is a known chain with published nutritional data, use those figures and explicitly state in the summary and assumptions what data source you used (e.g. "Used ${context.name} published nutritional data" or "No specific data found for ${context.name} — assumed higher fat and sodium typical of eating out"). Location context: ${context.location || 'not specified'} — use this to disambiguate between regional chains (e.g. Nando's UK vs US portion sizes).`
+      : '';
+    ctx = `\nCONTEXT: Restaurant meal${namePart}${locPart}.${dataNote} Restaurant meals typically use more oil, butter, and salt — and serve larger portions than home cooking. Adjust estimates accordingly.`;
+  }
+  return BASE_PROMPT + ctx + '\n\nAnalyse this food. Identify every ingredient, estimate gram portions, and return the JSON.';
+}
+
+async function fetchPieceData(name) {
+  // Asks the edge function for "1 [name]" to get per-piece gram weight + per100 nutrition.
+  // e.g. "1 egg" → estimatedG ≈ 50g, plus per100 nutrition values for egg.
+  const token = await getToken();
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/wise-analyse`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'text', description: `1 ${name}`, context: null }),
+  });
+  if (!res.ok) throw new Error(`Lookup failed for ${name}`);
+  const text = await res.text();
+  let result;
+  try { result = JSON.parse(text); } catch(_) { result = extractJSON(text); }
+  const item = result?.identified?.[0];
+  if (item?.per100 && item?.estimatedG) {
+    return { ...item.per100, emoji: item.emoji || '🍽️', gramsPerPiece: item.estimatedG };
+  }
+  throw new Error(`No piece data for ${name}`);
+}
+
+async function fetchPer100(name) {
+  // Use wise-analyse edge function with a text description to get per100 data.
+  // callAnalyse uses res.json() which fails if the edge function returns JSON + trailing text.
+  // We fetch manually here so we can run the response through extractJSON as a fallback.
+  const token = await getToken();
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/wise-analyse`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'text', description: `100g ${name}`, context: null }),
+  });
+  if (!res.ok) throw new Error(`Lookup failed for ${name}`);
+  // Try clean JSON first; fall back to extractJSON if there's trailing content
+  const text = await res.text();
+  let result;
+  try { result = JSON.parse(text); }
+  catch(_) { result = extractJSON(text); }
+  const item = result?.identified?.[0];
+  if (item?.per100) return { ...item.per100, emoji: item.emoji || '🍽️' };
+  throw new Error(`No nutritional data returned for ${name}`);
+}
+
+function buildRestaurantLabel(context) {
+  // Combines name + location into a single string for the edge function.
+  // e.g. "Nando's (London)" or just "Din Tai Fung" — Claude understands location context inline.
+  if (!context?.name && !context?.location) return null;
+  const parts = [context.name, context.location ? `(${context.location})` : null].filter(Boolean);
+  return parts.join(' ') || null;
+}
+
+async function analysePhoto(dataUrls, context, userNote) {
+  const compressed = await Promise.all(dataUrls.map(u => compressImage(u, 768, 0.8)));
+  return callAnalyse({
+    type: 'photo',
+    images: compressed,
+    context: context?.type || null,
+    restaurantName: buildRestaurantLabel(context),
+    userNote: userNote || null,
+  });
+}
+
+async function analyseText(description, context) {
+  return callAnalyse({
+    type: 'text',
+    description,
+    context: context?.type || null,
+    restaurantName: buildRestaurantLabel(context),
+  });
+}
+
+async function runAnalysis() {
+  // Sync textarea value from DOM — avoids the stale-state bug where
+  // state.mealText was set via direct mutation but button never re-rendered
+  const textareaEl = document.getElementById('meal-text');
+  if (textareaEl) state.mealText = textareaEl.value;
+
+  // Validate before showing loading
+  if (state.analyseTab === 'photo' && state.photoDataUrls.length === 0) {
+    setState({ analysisError: 'Please upload at least one photo first.' });
+    return;
+  }
+  if (state.analyseTab === 'text' && !state.mealText.trim()) {
+    setState({ analysisError: 'Please describe your meal before analysing.' });
+    return;
+  }
+
+  setState({ analysing: true, analysisError: null, analysisResult: null });
+  try {
+    const context = state.mealContext
+      ? { type: state.mealContext, name: state.mealContext === 'restaurant' ? state.restaurantName.trim() : null, location: state.mealContext === 'restaurant' ? state.restaurantLocation.trim() : null }
+      : null;
+    let result;
+    if (state.analyseTab === 'photo') {
+      result = await analysePhoto(state.photoDataUrls, context, state.photoDescription.trim() || null);
+    } else {
+      result = await analyseText(state.mealText.trim(), context);
+    }
+    await saveMealLog(result);
+    setState({ analysing: false, analysisResult: result, screen: 'results' });
+  } catch (err) {
+    console.error(err);
+    setState({ analysing: false, analysisError: err.message || 'Analysis failed. Please try again.' });
+  }
+}
+
+// ─── Fuel planner ────────────────────────────────────────────────────────────
+function calcAdjustedTargets(profile, activity, effort) {
+  const base = calcTargets(profile);
+  if (activity === 'rest') return base;
+  const bonus = { light: 200, moderate: 400, hard: 650 }[effort] || 0;
+  const mixedExtra = activity === 'mixed' ? Math.round(bonus * 0.15) : 0;
+  const totalBonus = bonus + mixedExtra;
+  const extraCarbs = Math.round(totalBonus / 4);
+  return { ...base, cal: base.cal + totalBonus, carbs: base.carbs + extraCarbs };
+}
+
+function buildFuelPrompt(profile, targets, activity, effort, when, meals) {
+  const isRest = activity === 'rest';
+  const goalLabel = { fuel: 'Performance — maximise training output', muscle: 'Build Muscle — 10% calorie surplus', fat: 'Lose Fat — 15% deficit', recomp: 'Recomposition — maintenance + high protein' }[profile.goal];
+  const activityDesc = isRest ? 'Rest day — no training' : `${effort.charAt(0).toUpperCase() + effort.slice(1)} ${activity} session, training time: ${when}`;
+
+  const schema = `{
+  "dayType": "One-line description e.g. Hard Strength Day — Afternoon Session",
+  "meals": [
+    {
+      "slot": "Meal name e.g. Breakfast / Pre-Training / Post-Training / Lunch / Dinner / Snack",
+      "timing": "When to eat e.g. 7:00 AM / 2 hours before training / Within 90 minutes of finishing",
+      "purpose": "One sentence — why this meal is structured this way for the goal and training",
+      "ingredients": [
+        { "name": "Ingredient", "amount": "e.g. 150g / 2 large / 1 medium", "emoji": "🍗", "note": "optional brief reason" }
+      ],
+      "mealMacros": { "cal": 0, "protein": 0, "carbs": 0, "fat": 0, "fibre": 0 }
+    }
+  ],
+  "dayNotes": ["Note 1", "Note 2", "Note 3"]
+}`;
+
+  return [{ role: 'user', content: `You are WISE — What I Should Eat — a performance nutrition AI.
+Build a precise ingredient-level fuel plan for this person's day.
+
+PROFILE:
+- Weight: ${profile.weight}kg  Height: ${profile.height}cm  Age: ${profile.age}  Sex: ${profile.sex}
+- Goal: ${goalLabel}
+
+TODAY'S ADJUSTED DAILY TARGETS:
+- Calories: ${targets.cal} kcal
+- Protein: ${targets.protein}g
+- Carbs: ${targets.carbs}g
+- Fat: ${targets.fat}g
+- Fibre: ${targets.fibre}g
+
+TODAY'S TRAINING: ${activityDesc}
+
+RULES:
+- Return ONLY valid raw JSON matching the schema (no markdown, no code fences)
+- Ingredients must be specific with gram/unit amounts — no vague suggestions, no recipes
+- ${isRest ? 'Rest day: 3–4 balanced meals, distribute macros evenly, keep carbs moderate' : `Training day: build meals around the ${when} training window. Pre-training: carb-forward, moderate protein, minimal fat. Post-training: fast protein + carbs within 90 min, low fat. Other meals fill remaining targets.`}
+- Create exactly ${meals} meals (the user has requested ${meals} meals today) — no more, no fewer
+- Total mealMacros across all meals must sum to within 5% of daily targets
+- Use common, accessible whole foods
+- dayNotes: max 3 items, specific and actionable (e.g. timing, hydration, key food swaps)
+- ${profile.goal === 'recomp' ? 'Recomp goal: protein must be spread across every meal, not front-loaded' : ''}
+
+SCHEMA:
+${schema}` }];
+}
+
+async function generateFuelPlan() {
+  setState({ fuelPlanning: true, fuelError: null, fuelPlan: null });
+  try {
+    const targets = calcAdjustedTargets(state.profile, state.fuelActivity, state.fuelEffort);
+    const plan = await callFuel({
+      profile: { ...state.profile, weight_kg: state.profile.weight, height_cm: state.profile.height },
+      targets,
+      activity: state.fuelActivity,
+      effort: state.fuelEffort,
+      when: state.fuelWhen,
+      meals: state.fuelMeals,
+    });
+    plan._targets = targets;
+    setState({ fuelPlanning: false, fuelPlan: plan, screen: 'fuelResults' });
+  } catch (err) {
+    console.error(err);
+    setState({ fuelPlanning: false, fuelError: err.message || 'Failed to generate plan. Please try again.' });
+  }
+}
+
+// ─── Render helpers ───────────────────────────────────────────────────────────
+function macroBar(label, value, target, color) {
+  const pct = Math.min((value / target) * 100, 100);
+  const col = value > target * 1.05 ? '#dc2626' : color;
+  return `
+    <div class="macro-bar-row">
+      <div class="macro-bar-row-head">
+        <span class="mono" style="color:var(--subtle);font-size:12px;text-transform:uppercase;letter-spacing:.08em">${label}</span>
+        <span class="mono" style="font-size:13px"><span style="color:${col};font-weight:700">${value}g</span><span style="color:#d1d5db"> / ${target}g</span></span>
+      </div>
+      <div class="macro-bar-track"><div class="macro-bar-fill" style="width:${pct}%;background:${col}"></div></div>
+    </div>`;
+}
+
+function confBadge(c) {
+  const cls = c === 'High' ? 'high' : c === 'Medium' ? 'medium' : 'low';
+  return `<span class="badge badge-${cls}">${c}</span>`;
+}
+
+function macroTile(label, value, target, color, bg) {
+  const pct    = Math.round(Math.min(value / target * 100, 999));
+  const barPct = Math.min(value / target * 100, 100);
+  const over   = value > target * 1.05;
+  const col    = over ? '#dc2626' : color;
+  return `
+    <div style="background:${over ? '#fef2f2' : bg};border-radius:12px;padding:10px 8px;text-align:center;border:1px solid ${over ? '#fecaca' : 'transparent'}">
+      <div style="font-size:17px;font-weight:700;color:${col};letter-spacing:-.02em;line-height:1">${value}g</div>
+      <div style="font-size:9px;color:${col};font-family:monospace;text-transform:uppercase;letter-spacing:.08em;margin:3px 0 6px;opacity:.8">${label}</div>
+      <div style="height:3px;background:rgba(0,0,0,0.08);border-radius:99px;margin-bottom:5px">
+        <div style="height:100%;width:${barPct}%;background:${col};border-radius:99px"></div>
+      </div>
+      <div style="font-size:10px;color:${col};font-family:monospace;opacity:.75">${pct}% daily</div>
+    </div>`;
+}
+
+
+// ─── Fuel results helpers ─────────────────────────────────────────────────────
+function renderFuelTargetsBreakdown(t) {
+  if (!state.fuelTargetsExpanded) return '';
+  const p = state.profile;
+  const bmr = calcBMR(p);
+  const tdee = Math.round(bmr * 1.55);
+  const goalAdj = p.goal === 'fat' ? -Math.round(tdee * 0.15) : p.goal === 'muscle' ? Math.round(tdee * 0.10) : 0;
+  const goalLabel = p.goal === 'fat' ? 'Fat loss deficit (−15%)' : p.goal === 'muscle' ? 'Muscle gain surplus (+10%)' : p.goal === 'recomp' ? 'Recomp — maintenance calories' : 'Performance — maintenance calories';
+  const isRest = state.fuelActivity === 'rest';
+  const actBonus = isRest ? 0 : ({ light: 200, moderate: 400, hard: 650 }[state.fuelEffort] || 0);
+  const mixedExtra = state.fuelActivity === 'mixed' ? Math.round(actBonus * 0.15) : 0;
+  const totalBonus = actBonus + mixedExtra;
+  const rows = [
+    ['BMR — your body at rest', `${bmr} kcal`, '#374151'],
+    ['Daily activity (×1.55)', `+${tdee - bmr} kcal`, '#6b7280'],
+    ...(goalAdj !== 0 ? [[goalLabel, `${goalAdj > 0 ? '+' : ''}${goalAdj} kcal`, goalAdj > 0 ? '#16a34a' : '#d97706']] : []),
+    ...(totalBonus > 0 ? [[`Today's ${state.fuelEffort} ${state.fuelActivity} session`, `+${totalBonus} kcal`, '#3b82f6']] : []),
+  ];
+
+  // Macro derivation workings
+  const proteinPerKg = { performance: 1.8, muscle: 2.0, fat: 2.2, recomp: 2.3 }[p.goal] || 1.8;
+  const goalProteinLabel = { performance: 'performance', muscle: 'muscle gain', fat: 'fat loss', recomp: 'recomp' }[p.goal] || p.goal;
+  const fatPct = p.goal === 'fat' ? 30 : 25;
+  const proteinKcal = Math.round(t.protein * 4);
+  const fatKcal = Math.round(t.fat * 9);
+  const carbKcal = t.cal - proteinKcal - fatKcal;
+
+  const macroRows = [
+    {
+      label: 'Protein', color: 'var(--protein)', grams: t.protein,
+      formula: `${p.weight}kg × ${proteinPerKg}g/kg (${goalProteinLabel} target)`,
+    },
+    {
+      label: 'Fat', color: 'var(--fat)', grams: t.fat,
+      formula: `${fatPct}% of ${t.cal} kcal = ${fatKcal} kcal ÷ 9`,
+    },
+    {
+      label: 'Carbs', color: 'var(--carbs)', grams: t.carbs,
+      formula: `Remaining ${carbKcal} kcal (${t.cal} − ${proteinKcal} protein − ${fatKcal} fat) ÷ 4`,
+    },
+    {
+      label: 'Fibre', color: 'var(--fibre)', grams: t.fibre,
+      formula: `Standard target for active adults`,
+    },
+  ];
+
+  return `
+  <div class="card" style="margin-top:-10px;border-top-left-radius:0;border-top-right-radius:0;border-top:none;margin-bottom:12px;padding-top:12px">
+    ${rows.map(([label, val, col], idx) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;${idx < rows.length - 1 ? 'border-bottom:1px solid #f3f4f6' : ''}">
+        <span style="font-size:13px;color:#374151">${label}</span>
+        <span style="font-size:13px;font-weight:700;color:${col};font-family:monospace">${val}</span>
+      </div>`).join('')}
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:11px 0 8px;border-top:2px solid #111;margin-top:4px">
+      <span style="font-size:13px;font-weight:600">Today's target</span>
+      <span style="font-size:14px;font-weight:700;font-family:monospace">${t.cal} kcal</span>
+    </div>
+
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid #f3f4f6">
+      <div class="mono" style="font-size:10px;color:var(--muted);letter-spacing:.1em;margin-bottom:10px">HOW MACROS WERE SET</div>
+      ${macroRows.map((m, idx) => `
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:9px 0;${idx < macroRows.length - 1 ? 'border-bottom:1px solid #f3f4f6' : ''}">
+          <div style="flex:1;min-width:0">
+            <div class="mono" style="font-size:10px;color:${m.color};letter-spacing:.08em;margin-bottom:3px">${m.label.toUpperCase()}</div>
+            <div style="font-size:12px;color:var(--subtle);line-height:1.5">${m.formula}</div>
+          </div>
+          <span style="font-size:14px;font-weight:700;color:${m.color};font-family:monospace;white-space:nowrap">${m.grams}g</span>
+        </div>`).join('')}
+    </div>
+
+    <p style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6">Mifflin-St Jeor BMR · ×1.55 moderate active lifestyle · goal and training adjustments applied on top. Adjust your profile if these feel off.</p>
+  </div>`;
+}
+
+function renderMicroNudge(goal) {
+  const nudges = {
+    muscle: [
+      { name: 'Zinc', icon: '🔩', why: 'Supports testosterone and muscle protein synthesis. Red meat, pumpkin seeds, oysters.' },
+      { name: 'Magnesium', icon: '😴', why: 'Critical for sleep quality and muscle recovery — when gains actually happen. Dark leafy greens, nuts, dark chocolate.' },
+      { name: 'Vitamin D', icon: '☀️', why: 'Drives muscle strength and hormone function. Egg yolks, fatty fish, and sunlight.' },
+    ],
+    fat: [
+      { name: 'Iron', icon: '🩸', why: 'Energy drops fast in a deficit if iron is low. Lean red meat and spinach are your best sources.' },
+      { name: 'Vitamin B12', icon: '⚡', why: 'Supports red blood cells and sustained energy on reduced calories. Eggs, meat, dairy.' },
+      { name: 'Zinc', icon: '🛡️', why: 'Immune function takes a hit during a calorie deficit. Prioritise zinc-rich whole foods.' },
+    ],
+    recomp: [
+      { name: 'Magnesium', icon: '💪', why: 'Recomp requires quality sleep. Poor sleep = poor muscle gain and slower fat loss simultaneously.' },
+      { name: 'Zinc & Vitamin D', icon: '⚖️', why: 'Hormone balance underpins recomp. Low testosterone tanks both muscle gain and fat loss.' },
+      { name: 'Iron', icon: '🩸', why: 'You\'re in a high-output state. Iron deficiency will tank your energy and training performance.' },
+    ],
+    fuel: [
+      { name: 'Magnesium', icon: '⚡', why: 'Involved in 300+ energy reactions in the body. Low magnesium = fatigue and cramps mid-session.' },
+      { name: 'Vitamin D', icon: '☀️', why: 'Directly impacts muscle contraction and power output. Frequently deficient in athletes.' },
+      { name: 'Electrolytes', icon: '💧', why: 'Sodium and potassium for hydration and nerve function. Salt your food on hard training days.' },
+    ],
+  };
+  const items = nudges[goal] || nudges.fuel;
+  const goalName = { fat: 'fat loss', muscle: 'muscle gain', recomp: 'recomp', fuel: 'performance' }[goal] || 'performance';
+  return `
+  <div class="card" style="margin-bottom:12px;background:linear-gradient(135deg,#f0f9ff 0%,#ffffff 100%);border-color:#bae6fd">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <span style="font-size:18px">🔬</span>
+      <div>
+        <div style="font-size:13px;font-weight:600;color:#0369a1">Don't forget micronutrients</div>
+        <div style="font-size:12px;color:#7dd3fc">Key ones for your ${goalName} goal</div>
+      </div>
+    </div>
+    ${items.map((n, idx) => `
+      <div style="display:flex;gap:10px;${idx < items.length - 1 ? 'margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid #e0f2fe' : 'margin-bottom:10px'}">
+        <span style="font-size:18px;flex-shrink:0">${n.icon}</span>
+        <div>
+          <div style="font-size:13px;font-weight:600;color:#0369a1;margin-bottom:2px">${n.name}</div>
+          <div style="font-size:12px;color:#374151;line-height:1.5">${n.why}</div>
+        </div>
+      </div>`).join('')}
+    <div style="padding:9px 12px;background:rgba(186,230,253,0.4);border-radius:8px;font-size:11px;color:#0369a1;line-height:1.5">
+      Full micronutrient tracking — including what's in your plan — is coming soon.
+    </div>
+  </div>`;
+}
+
+// ─── Meal scoring ─────────────────────────────────────────────────────────────
+function calcMealScore(totals, targets, profile) {
+  const m = 1 / 3; // per-meal fraction of daily targets
+  const ip  = Math.max(targets.protein * m, 1);
+  const ic  = Math.max(targets.carbs   * m, 1);
+  const iff = Math.max(targets.fat     * m, 1);
+  const ifi = Math.max(targets.fibre   * m, 1);
+
+  // Protein: 0–35 pts — central to every goal
+  const pr = Math.min(totals.protein / ip, 1.5);
+  const pScore = pr >= 1.0 ? 35 : Math.round(pr / 1.0 * 35);
+
+  // Carbs: 0–25 pts — goal-weighted
+  const cr = totals.carbs / ic;
+  let cScore;
+  if (profile.goal === 'fat') {
+    cScore = cr <= 0.9 ? 25 : cr <= 1.1 ? 20 : Math.max(20 - (cr - 1.1) * 40, 0);
+  } else if (profile.goal === 'fuel') {
+    cScore = Math.min(cr / 1.0, 1) * 25;
+  } else {
+    cScore = cr <= 1.2 ? Math.min(cr / 1.2, 1) * 23 : Math.max(23 - (cr - 1.2) * 25, 0);
+  }
+  cScore = Math.round(Math.max(0, Math.min(cScore, 25)));
+
+  // Fat: 0–20 pts — penalise excess more for fat-loss goal
+  const fr = totals.fat / iff;
+  let fScore = fr <= 1.0 ? 20 : fr <= 1.4 ? Math.round(20 - (fr - 1.0) / 0.4 * 10) : Math.max(10 - (fr - 1.4) * 15, 0);
+  if (profile.goal === 'fat' && fr > 1.2) fScore = Math.max(fScore - 5, 0);
+  fScore = Math.round(Math.max(0, Math.min(fScore, 20)));
+
+  // Fibre: 0–15 pts
+  const fiScore = Math.round(Math.min(totals.fibre / ifi, 1) * 15);
+
+  // Calorie reasonableness: 0–5 pts
+  const calR = totals.cal / Math.max(targets.cal * m, 1);
+  let calScore = (calR >= 0.15 && calR <= 1.6) ? 5 : calR > 1.6 ? Math.max(5 - (calR - 1.6) * 8, 0) : Math.round(calR / 0.15 * 5);
+  calScore = Math.round(Math.max(0, Math.min(calScore, 5)));
+
+  const raw = pScore + cScore + fScore + fiScore + calScore;
+  return Math.min(Math.max(raw, 18), 93); // never 100, minimum 18
+}
+
+function generateVerdictText(score, totals, targets, profile) {
+  const m    = 1 / 3;
+  const ip   = Math.round(targets.protein * m);
+  const iff  = Math.round(targets.fat     * m);
+  const ifi  = Math.round(targets.fibre   * m);
+  const ic   = Math.round(targets.carbs   * m);
+
+  const goalLabel = { fuel: 'performance', muscle: 'building muscle', fat: 'fat loss', recomp: 'recomposition' }[profile.goal] || 'your goal';
+
+  const pHigh  = totals.protein >= ip * 1.05;
+  const pGood  = totals.protein >= ip * 0.82;
+  const pLow   = totals.protein <  ip * 0.55;
+  const fHigh  = totals.fat     >  iff * 1.35;
+  const cHigh  = totals.carbs   >  ic  * 1.35;
+  const fiLow  = totals.fibre   <  ifi * 0.45;
+  const fiGood = totals.fibre   >= ifi * 0.75;
+  const cLow   = totals.carbs   <  ic  * 0.55;
+
+  const lines = [];
+  lines.push(`Given your ${goalLabel} goal, this meal scores ${score}/100.`);
+
+  // Protein
+  if (pHigh)      lines.push(`Protein is strong at ${totals.protein}g — that's doing real work.`);
+  else if (pGood) lines.push(`Protein is solid at ${totals.protein}g.`);
+  else if (pLow)  lines.push(`Protein is low at ${totals.protein}g — aim for closer to ${ip}g per meal.`);
+  else            lines.push(`Protein is decent at ${totals.protein}g, though you could push it to ${ip}g.`);
+
+  // Key gap or strength
+  if (fHigh && profile.goal === 'fat')        lines.push(`Fat is higher than ideal for a deficit — it's eating into your calorie budget.`);
+  else if (cHigh && profile.goal === 'fat')   lines.push(`Carbs are on the high side for a fat loss meal.`);
+  else if (cLow  && profile.goal === 'fuel')  lines.push(`Carbs are lower than ideal for a performance goal — fuel your session properly.`);
+  else if (fiLow)                             lines.push(`Fibre is low, which will affect satiety later.`);
+  else if (fiGood && pGood)                   lines.push(`Good fibre content too — solid overall structure.`);
+
+  return lines.join(' ');
+}
+
+// ─── Screens ──────────────────────────────────────────────────────────────────
+
+function renderLoading() {
+  return `
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px">
+      <div style="font-size:36px;font-weight:600;letter-spacing:-.04em">WISE</div>
+      <div class="spinner"></div>
+    </div>`;
+}
+
+function renderAuth() {
+  const isLogin = state.authMode === 'login';
+  return `
+    <div style="margin-bottom:36px;text-align:center">
+      <div class="mono" style="font-size:11px;color:var(--muted);letter-spacing:.2em;text-transform:uppercase;margin-bottom:8px">What I Should Eat</div>
+      <h1 style="font-size:44px;font-weight:600;letter-spacing:-.04em;line-height:1">WISE</h1>
+      <p class="italic" style="color:var(--muted);font-size:16px;margin-top:8px">Fuel your training, close your gaps.</p>
+    </div>
+
+    <div class="card">
+      <div class="label">${isLogin ? 'Sign in' : 'Create account'}</div>
+      ${state.authError ? `<div class="error-box" style="margin-bottom:14px">${state.authError}</div>` : ''}
+      <div class="field" style="margin-bottom:12px">
+        <label>Email</label>
+        <input type="email" id="auth-email" placeholder="you@example.com"
+          value="${state.authEmail}"
+          oninput="state.authEmail=this.value"
+          style="width:100%;border:1px solid var(--border);border-radius:10px;padding:11px 14px;font-size:15px;outline:none;font-family:inherit"
+          onkeydown="if(event.key==='Enter')handleAuth()">
+      </div>
+      <div class="field" style="margin-bottom:4px">
+        <label>Password</label>
+        <input type="password" id="auth-password" placeholder="${isLogin ? '••••••••' : 'At least 6 characters'}"
+          value="${state.authPassword}"
+          oninput="state.authPassword=this.value"
+          style="width:100%;border:1px solid var(--border);border-radius:10px;padding:11px 14px;font-size:15px;outline:none;font-family:inherit"
+          onkeydown="if(event.key==='Enter')handleAuth()">
+      </div>
+    </div>
+
+    <button class="btn-primary" onclick="handleAuth()" ${state.authLoading ? 'disabled' : ''}>
+      ${state.authLoading ? 'Please wait…' : (isLogin ? 'Sign in →' : 'Create account →')}
+    </button>
+    <button class="btn-secondary" onclick="setState({authMode:state.authMode==='login'?'signup':'login',authError:null})">
+      ${isLogin ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
+    </button>`;
+}
+
+function renderProfile() {
+  const p = state.profile;
+  return `
+    <div style="margin-bottom:28px">
+      <div class="mono" style="font-size:11px;color:var(--muted);letter-spacing:.2em;text-transform:uppercase;margin-bottom:6px">What I Should Eat</div>
+      <h1 style="font-size:38px;font-weight:600;letter-spacing:-.04em;line-height:1">WISE</h1>
+      <p class="italic" style="color:var(--muted);font-size:16px;margin-top:6px">Set up your profile</p>
+    </div>
+    <p style="font-size:14px;color:var(--subtle);margin-bottom:20px">Quick setup for accurate daily targets. You can edit this any time.</p>
+    <div class="card">
+      <div class="profile-grid">
+        <div class="field"><label>Weight (kg)</label><input type="number" id="p-weight" value="${p.weight}"></div>
+        <div class="field"><label>Height (cm)</label><input type="number" id="p-height" value="${p.height}"></div>
+      </div>
+      <div class="profile-grid">
+        <div class="field"><label>Age</label><input type="number" id="p-age" value="${p.age}"></div>
+        <div class="field">
+          <label>Sex</label>
+          <div class="toggle-row">
+            <button class="toggle ${p.sex==='male'?'active':''}" onclick="setSex('male')">Male</button>
+            <button class="toggle ${p.sex==='female'?'active':''}" onclick="setSex('female')">Female</button>
+          </div>
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--muted);background:#f9fafb;border-radius:8px;padding:9px 12px;margin-bottom:16px;line-height:1.5">
+        Age and sex feed into your <strong style="color:var(--subtle)">Mifflin-St Jeor BMR</strong> — the calories your body burns at rest. Sex shifts BMR by ~166 kcal/day; age reduces it ~5 kcal/year. Both affect your calorie target and every macro gram derived from it.
+      </div>
+      <div class="label" style="margin-bottom:10px">Goal</div>
+      ${[['fuel','⚡','Performance','Fuel training, maximise output'],
+         ['muscle','💪','Build Muscle','Surplus + protein forward'],
+         ['fat','🔥','Lose Fat','Deficit with high protein'],
+         ['recomp','⚖️','Recomposition','Lose fat and build muscle simultaneously']
+        ].map(([id,e,t,d]) => `
+        <button class="goal-card ${p.goal===id?'active':''}" onclick="setGoal('${id}')">
+          <span class="goal-emoji">${e}</span>
+          <div><div class="goal-title">${t}</div><div class="goal-desc">${d}</div></div>
+        </button>`).join('')}
+    </div>
+    <button class="btn-primary" onclick="saveProfile()">Let's go →</button>`;
+}
+
+function homeTargetsExplainer(p, targets) {
+  const bmr  = calcBMR(p);
+  const tdee = Math.round(bmr * 1.55);
+  const goalCopy = {
+    fuel: {
+      headline: "You're fuelling performance.",
+      body: `Calories sit at maintenance — you're training hard enough that a surplus isn't useful, you just need to match what you burn. Protein at ${Math.round(p.weight * 1.8)}g keeps muscle repaired and adapting (research consistently shows 1.6–2.0g/kg covers the ceiling for athletic goals). Carbs are the priority fuel for high-intensity work — your muscles physically can't burn fat fast enough during hard efforts. Fat at 25% keeps hormones in order; below 20% and testosterone starts dropping, which matters for recovery.`
+    },
+    muscle: {
+      headline: "You're building muscle. That takes fuel.",
+      body: `A 10% calorie surplus gives your body the raw material to lay down new tissue without piling on fat — the sweet spot backed by Barakat et al. and confirmed across dozens of resistance training studies. Protein at ${Math.round(p.weight * 2.0)}g/kg is at the evidence-based ceiling for muscle protein synthesis (Stokes et al. 2018 meta-analysis puts the ceiling around 1.6g/kg; we go a touch higher because training volume creates more demand). Carbs are high because glycogen drives training performance — and training performance is what signals the body to grow.`
+    },
+    fat: {
+      headline: "You're losing fat without losing muscle.",
+      body: `A 15% deficit sits in the zone researchers call "aggressive but sustainable" — meaningful fat loss without tanking your metabolism or cannibalising muscle. The high protein target (${Math.round(p.weight * 2.2)}g/kg) is the most important number here: on a deficit, dietary protein is the primary shield against muscle loss. Helms et al. (2014) found that natural athletes cutting calories need significantly more protein than bulking athletes — the body uses it defensively. Fat stays at 30% because dropping fat calories too low wrecks hormone production, energy, and mood long before it helps.`
+    },
+    recomp: {
+      headline: "Recomp is nutrition on a knife's edge.",
+      body: `You're trying to lose fat and build (or hold) muscle at the same time. Calories sit at maintenance because you need to be in a slight surplus for muscle synthesis and a slight deficit for fat loss — simultaneously. Your body can do this, but only with enough protein to make it happen. ${Math.round(p.weight * 2.3)}g/kg is the highest target WISE uses: Barakat et al. (2020) found this ceiling is where recomp athletes maximise muscle retention during fat loss. The carbs and fat split then fuels training and keeps hormones stable. It's slower than a bulk or a cut — that's not a flaw, it's how recomp works.`
+    }
+  };
+  const copy = goalCopy[p.goal] || goalCopy.fuel;
+  const surplus = p.goal === 'muscle' ? `+${tdee < targets.cal ? targets.cal - tdee : 0} kcal above maintenance` :
+                  p.goal === 'fat'    ? `${tdee - targets.cal} kcal below maintenance` :
+                  `at maintenance`;
+  return `
+    <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">${copy.headline}</div>
+    <div style="font-size:13px;color:var(--subtle);line-height:1.6;margin-bottom:12px">${copy.body}</div>
+    <div style="font-size:11px;color:var(--muted);font-family:monospace;background:#f9fafb;border-radius:8px;padding:10px 12px;line-height:1.8">
+      BMR ${bmr} kcal (Mifflin-St Jeor) × 1.55 activity = TDEE ${tdee} kcal<br>
+      Goal adjustment: ${surplus}<br>
+      Protein: ${targets.protein}g (${p.goal === 'fat' ? '2.2' : p.goal === 'muscle' ? '2.0' : p.goal === 'recomp' ? '2.3' : '1.8'}g × ${p.weight}kg) · Fat: ${targets.fat}g (${p.goal === 'fat' ? '30' : '25'}% of calories) · Carbs: remainder
+    </div>`;
+}
+
+// Extracts a short 3–5 word dish name from Claude's verbose summary.
+// Claude always starts summaries with "This looks like a/an ..." — we strip
+// that prefix then cut before "with", "and", commas, or other connectors.
+function extractShortMealName(summary) {
+  if (!summary) return null;
+  // Strip the standard preamble
+  const clean = summary.replace(/^This looks like (?:a |an )?/i, '').trim();
+  // Stop at "with", " and " used as a connector, commas, periods
+  const short = clean.split(/\s+with\s+|\s*,|\.\s*$|\s+and\s+a\s+/)[0].trim();
+  // Limit to 5 words max
+  const words = short.split(/\s+/).slice(0, 5).join(' ');
+  if (!words || words.length < 3) return null;
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+// A flexible progress bar that supports any unit (g, kcal, etc.)
+function trackerBar(label, value, target, color, unit) {
+  unit = unit || 'g';
+  const pct = Math.min((value / target) * 100, 100);
+  const col = value > target * 1.05 ? '#dc2626' : color;
+  return `
+    <div class="macro-bar-row">
+      <div class="macro-bar-row-head">
+        <span class="mono" style="color:var(--subtle);font-size:12px;text-transform:uppercase;letter-spacing:.08em">${label}</span>
+        <span class="mono" style="font-size:13px"><span style="color:${col};font-weight:700">${value}${unit}</span><span style="color:#d1d5db"> / ${target}${unit}</span></span>
+      </div>
+      <div class="macro-bar-track"><div class="macro-bar-fill" style="width:${pct}%;background:${col}"></div></div>
+    </div>`;
+}
+
+function renderRecentMeals() {
+  if (state.mealLogsLoading) {
+    return `<div style="margin-top:24px;text-align:center;padding:16px 0">
+      <div class="spinner" style="margin:0 auto 8px"></div>
+      <div style="font-size:12px;color:var(--muted);font-family:monospace">Loading meal history…</div>
+    </div>`;
+  }
+  if (!state.mealLogs.length) return '';
+
+  // Group by calendar date (local time)
+  const todayMidnight = new Date(); todayMidnight.setHours(0,0,0,0);
+  const yesterdayMidnight = new Date(todayMidnight); yesterdayMidnight.setDate(yesterdayMidnight.getDate()-1);
+  const groups = {};
+  state.mealLogs.forEach((log, i) => {
+    const d = new Date(log.logged_at); d.setHours(0,0,0,0);
+    const key = d.toISOString().split('T')[0]; // YYYY-MM-DD
+    if (!groups[key]) groups[key] = { date: d, logs: [] };
+    groups[key].logs.push({ log, i });
+  });
+  const sortedKeys = Object.keys(groups).sort().reverse(); // newest first
+
+  const groupsHTML = sortedKeys.map(key => {
+    const { date, logs } = groups[key];
+    const isToday = date.getTime() === todayMidnight.getTime();
+    const isYest  = date.getTime() === yesterdayMidnight.getTime();
+    const label = isToday ? 'Today'
+                : isYest  ? 'Yesterday'
+                : date.toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' });
+    const listId = 'mg-' + key;
+
+    const mealsHTML = logs.map(({ log, i }) => {
+      const dt = new Date(log.logged_at);
+      const timeStr = dt.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+      const preview = (log.meal_data || []).slice(0,3).map(it => it.name).join(', ');
+      return `<div style="display:flex;align-items:stretch;background:white;border:1px solid var(--border);border-radius:14px;margin-bottom:8px;overflow:hidden;box-shadow:var(--shadow)">
+        <button onclick="openMealLog(${i})" style="flex:1;display:flex;align-items:center;gap:12px;padding:12px 14px;cursor:pointer;text-align:left;background:none;border:none;min-width:0">
+          ${log.photo_data_url ? `<img src="${log.photo_data_url}" style="width:48px;height:48px;border-radius:8px;object-fit:cover;flex-shrink:0">` : `<div style="width:48px;height:48px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">🍽️</div>`}
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px">${extractShortMealName(log.summary) || preview || 'Meal'}</div>
+            <div style="font-size:11px;color:var(--muted);font-family:monospace">${timeStr} · ${log.totals?.cal || 0} kcal</div>
+          </div>
+          <span style="color:#d1d5db;font-size:14px;flex-shrink:0;margin-left:4px">→</span>
+        </button>
+        <button onclick="deleteMealLog('${log.id}')" style="padding:0 14px;background:none;border:none;border-left:1px solid var(--border);color:#d1d5db;cursor:pointer;font-size:19px;flex-shrink:0;line-height:1" title="Delete meal">×</button>
+      </div>`;
+    }).join('');
+
+    return `<div style="margin-bottom:4px">
+      <button onclick="var el=document.getElementById('${listId}'),o=el.style.display!=='none';el.style.display=o?'none':'';this.querySelector('.chev').textContent=o?'▼':'▲'" style="width:100%;display:flex;justify-content:space-between;align-items:center;background:none;border:none;border-bottom:1px solid var(--border);padding:8px 2px 8px;margin-bottom:8px;cursor:pointer;text-align:left">
+        <span style="font-size:11px;font-family:'SF Mono',monospace;text-transform:uppercase;letter-spacing:.1em;color:${isToday?'#374151':'var(--muted)'};">${label}</span>
+        <span class="chev" style="font-size:9px;color:var(--muted)">${isToday?'▲':'▼'}</span>
+      </button>
+      <div id="${listId}" style="display:${isToday?'':'none'}">${mealsHTML}</div>
+    </div>`;
+  }).join('');
+
+  return `<div style="margin-top:24px">${groupsHTML}</div>`;
+}
+
+function renderHome() {
+  const p = state.profile;
+  const targets = calcTargets(p);
+  const goal = {fuel:'Performance',muscle:'Build Muscle',fat:'Lose Fat',recomp:'Recomposition'}[p.goal];
+  const exp = state.homeTargetsExpanded;
+  return `
+    <div style="margin-bottom:28px">
+      <div class="mono" style="font-size:11px;color:var(--muted);letter-spacing:.2em;text-transform:uppercase;margin-bottom:6px">What I Should Eat</div>
+      <h1 style="font-size:38px;font-weight:600;letter-spacing:-.04em;line-height:1">WISE</h1>
+      <p class="italic" style="color:var(--muted);font-size:16px;margin-top:6px">What I Should Eat</p>
+    </div>
+
+    <button onclick="setState({screen:'profile'})" style="display:flex;align-items:center;gap:8px;background:#f9fafb;border:1px solid var(--border);border-radius:10px;padding:8px 14px;margin-bottom:12px;font-size:12px;color:var(--subtle);font-family:monospace;width:100%;text-align:left">
+      👤 ${p.weight}kg · ${p.height}cm · ${p.age}y · ${p.sex==='male'?'M':'F'} · ${goal}
+      <span style="color:#d1d5db;margin-left:auto">edit</span>
+    </button>
+
+    <!-- Daily targets card -->
+    <div class="card" style="margin-bottom:20px;padding:16px 18px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div class="label" style="margin-bottom:0">Today's targets</div>
+        <div style="font-size:11px;font-family:monospace;color:var(--muted)">${goal}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-bottom:12px">
+        <div style="text-align:center">
+          <div style="font-size:16px;font-weight:700">${targets.cal}</div>
+          <div style="font-size:9px;color:var(--muted);font-family:monospace;text-transform:uppercase;margin-top:2px">kcal</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:16px;font-weight:700;color:var(--protein)">${targets.protein}g</div>
+          <div style="font-size:9px;color:var(--muted);font-family:monospace;text-transform:uppercase;margin-top:2px">protein</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:16px;font-weight:700;color:var(--fat)">${targets.fat}g</div>
+          <div style="font-size:9px;color:var(--muted);font-family:monospace;text-transform:uppercase;margin-top:2px">fat</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:16px;font-weight:700;color:var(--carbs)">${targets.carbs}g</div>
+          <div style="font-size:9px;color:var(--muted);font-family:monospace;text-transform:uppercase;margin-top:2px">carbs</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:16px;font-weight:700;color:var(--fibre)">${targets.fibre}g</div>
+          <div style="font-size:9px;color:var(--muted);font-family:monospace;text-transform:uppercase;margin-top:2px">fibre</div>
+        </div>
+      </div>
+      <button onclick="setState({homeTargetsExpanded:!state.homeTargetsExpanded})"
+        style="background:none;border:none;padding:0;font-size:12px;color:var(--subtle);cursor:pointer;display:flex;align-items:center;gap:4px;font-family:inherit">
+        ${exp ? '▲' : '▼'} How did we get these numbers?
+      </button>
+      ${exp ? `<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px">${homeTargetsExplainer(p, targets)}</div>` : ''}
+    </div>
+
+    <button class="home-card-free" onclick="setState({screen:'analyse',analyseTab:'photo',photoDataUrls:[],mealText:'',mealContext:null,restaurantName:'',restaurantLocation:'',mealSlot:null,photoDescription:'',analysisResult:null,analysisError:null,analysing:false,viewingLog:null,mealSaveError:null})">
+      <div style="font-size:26px;margin-bottom:8px">🍽️</div>
+      <div class="home-card-title">Analyse a meal</div>
+      <div style="font-size:13px;color:#9ca3af;line-height:1.5">Upload a photo or describe your meal. AI analysis — WISE shows its workings.</div>
+    </button>
+
+    <button class="home-card-free" onclick="setState({screen:'fuel',fuelPlan:null,fuelError:null})">
+      <div style="font-size:26px;margin-bottom:8px">⚡</div>
+      <div class="home-card-title">Plan my fuel</div>
+      <div style="font-size:13px;color:var(--muted);line-height:1.5">Tell me what you're doing today. Get a precise ingredient-level fuel plan.</div>
+    </button>
+
+    <button class="home-card-free" onclick="setState({screen:'gaps'})">
+      <div style="font-size:26px;margin-bottom:8px">🔍</div>
+      <div class="home-card-title">Check my gaps</div>
+      <div style="font-size:13px;color:var(--muted);line-height:1.5">See today's meals and exactly what your day is still missing.</div>
+    </button>
+
+    ${renderRecentMeals()}
+
+    <div style="margin-top:20px;display:flex;justify-content:center;gap:20px">
+      <button onclick="handleSignOut()" style="background:none;border:none;font-size:11px;color:#d1d5db;font-family:monospace;cursor:pointer">Sign out</button>
+    </div>
+    <div class="mono" style="margin-top:8px;text-align:center;font-size:11px;color:#d1d5db">Values from USDA FoodData Central · Mifflin-St Jeor BMR</div>`;
+}
+
+function renderAnalyse() {
+  const tab = state.analyseTab;
+  let content = '';
+
+  if (state.analysing) {
+    content = `
+      <div style="text-align:center;padding:32px 0">
+        ${state.photoDataUrls.length > 0 && tab === 'photo' ? `<img src="${state.photoDataUrls[0]}" class="meal-photo" style="filter:brightness(.65)">` : ''}
+        <div class="spinner"></div>
+        <div style="font-size:15px;font-weight:500;color:var(--text);margin-bottom:6px">Analysing your meal…</div>
+        <div class="mono" style="font-size:12px;color:var(--muted);animation:pulse 1.5s ease-in-out infinite">Identifying ingredients and estimating portions</div>
+      </div>`;
+  } else if (tab === 'photo') {
+    content = photoTabContent();
+  } else {
+    content = textTabContent();
+  }
+
+  return `
+    <button class="btn-back" onclick="setState({screen:'home'})">← Back</button>
+    <div style="margin-bottom:4px"><span class="mono" style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em">Free · AI-powered</span></div>
+    <h2 style="font-size:22px;font-weight:600;letter-spacing:-.02em;margin-bottom:20px">Analyse a meal</h2>
+
+    ${!state.analysing ? `
+    <div class="tabs">
+      <button class="tab ${tab==='photo'?'active':''}" onclick="setState({analyseTab:'photo',analysisError:null})">📷 Photo</button>
+      <button class="tab ${tab==='text'?'active':''}"  onclick="setState({analyseTab:'text',analysisError:null})">✏️ Describe</button>
+    </div>` : ''}
+
+    ${state.analysisError ? `<div class="error-box">⚠ ${state.analysisError}</div>` : ''}
+    ${content}`;
+}
+
+function contextToggleHTML() {
+  const c = state.mealContext;
+  const s = state.mealSlot;
+  const slotColors = { breakfast:'#f97316', lunch:'#65a30d', dinner:'#6366f1', snack:'#10b981' };
+  const slotBtn = (id, label, emoji) => {
+    const sel = s === id;
+    const col = slotColors[id] || '#111';
+    return `<button onclick="setState({mealSlot:state.mealSlot==='${id}'?null:'${id}'})" style="flex:1;padding:10px 4px 8px;border-radius:12px;border:${sel?`2px solid ${col}`:'1.5px solid var(--border)'};background:${sel?col+'18':'white'};color:${sel?col:'var(--subtle)'};font-size:12px;font-weight:${sel?'700':'500'};cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;position:relative;transition:all .15s">
+      ${sel?`<span style="position:absolute;top:4px;right:6px;font-size:9px;color:${col};font-weight:800">✓</span>`:''}
+      <span style="font-size:16px">${emoji}</span><span>${label}</span>
+    </button>`;
+  };
+  return `
+    <div style="margin-bottom:14px">
+      <div class="label" style="margin-bottom:8px">Meal <span style="font-weight:400;font-style:italic;text-transform:none;letter-spacing:0">(optional — improves accuracy)</span></div>
+
+      <!-- Slot: which meal of the day is this? -->
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        ${slotBtn('breakfast','Breakfast','🌅')}
+        ${slotBtn('lunch','Lunch','☀️')}
+        ${slotBtn('dinner','Dinner','🌙')}
+        ${slotBtn('snack','Snack','🍎')}
+      </div>
+
+      <!-- Context: home or restaurant? -->
+      <div style="display:flex;gap:8px">
+        <button onclick="setState({mealContext:state.mealContext==='home'?null:'home'})" style="flex:1;padding:10px;border-radius:10px;border:1px solid ${c==='home'?'#111':'var(--border)'};background:${c==='home'?'#111':'white'};color:${c==='home'?'white':'var(--subtle)'};font-size:13px;font-weight:500;cursor:pointer">🏠 Home cooked</button>
+        <button onclick="setState({mealContext:state.mealContext==='restaurant'?null:'restaurant'})" style="flex:1;padding:10px;border-radius:10px;border:1px solid ${c==='restaurant'?'#111':'var(--border)'};background:${c==='restaurant'?'#111':'white'};color:${c==='restaurant'?'white':'var(--subtle)'};font-size:13px;font-weight:500;cursor:pointer">🍴 Restaurant</button>
+      </div>
+      ${c === 'restaurant' ? `
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+        <input type="text" placeholder="Restaurant name (optional) e.g. Nando's, Din Tai Fung"
+          value="${state.restaurantName}"
+          oninput="state.restaurantName=this.value"
+          style="width:100%;border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-size:14px;outline:none;font-family:inherit">
+        <input type="text" placeholder="Location — city, area, or paste a Google Maps link"
+          value="${state.restaurantLocation}"
+          oninput="state.restaurantLocation=this.value"
+          style="width:100%;border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-size:14px;outline:none;font-family:inherit">
+        <div style="font-size:12px;color:var(--muted);line-height:1.4">Helps us tell apart regional chains — e.g. Nando's UK vs US have different portion sizes</div>
+      </div>` : ''}
+    </div>`;
+}
+
+function photoTabContent() {
+  const photos = state.photoDataUrls;
+  const hasPhotos = photos.length > 0;
+  const canAddMore = photos.length < 3;
+
+  if (!hasPhotos) {
+    return `
+      <div class="info-box">
+        <span style="flex-shrink:0">📷</span>
+        <span>Upload up to 3 photos for better accuracy — e.g. top-down view + cross-section to show layers or sauces.</span>
+      </div>
+      ${contextToggleHTML()}
+      <label class="upload-zone" for="photo-input">
+        <div style="font-size:40px">📷</div>
+        <div style="font-size:15px;font-weight:500;color:#374151">Upload a photo of your meal</div>
+        <div style="font-size:13px;color:var(--muted)">JPG, PNG, HEIC — up to 3 photos</div>
+      </label>
+      <input type="file" id="photo-input" accept="image/*" style="display:none" onchange="addPhoto(event)">
+      <div style="text-align:center;font-size:12px;color:var(--muted);margin-top:4px;margin-bottom:14px">
+        Want more accurate results?
+        <button onclick="setState({analyseTab:'text',analysisError:null})" style="background:none;border:none;font-size:12px;color:#111;font-weight:600;cursor:pointer;text-decoration:underline;padding:0">Describe your meal instead →</button>
+      </div>
+      <div class="warning">
+        <div class="warning-icon">⚠️</div>
+        <div>
+          <div class="warning-title">Estimated analysis — not nutritional fact</div>
+          <div class="warning-body">Photo analysis uses visual estimation. Results can vary ±25%. WISE shows every assumption below so you can judge accuracy.</div>
+        </div>
+      </div>`;
+  }
+
+  return `
+    ${contextToggleHTML()}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      ${photos.map((url, i) => `
+        <div style="position:relative;width:90px;height:90px">
+          <img src="${url}" style="width:90px;height:90px;border-radius:10px;object-fit:cover;border:1px solid var(--border)">
+          <button onclick="removePhoto(${i})" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:none;background:#dc2626;color:white;font-size:10px;font-weight:700;cursor:pointer;line-height:1">✕</button>
+        </div>`).join('')}
+      ${canAddMore ? `
+        <label for="photo-input-add" style="width:90px;height:90px;border:2px dashed #d1d5db;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;color:var(--muted);font-size:11px;gap:4px;background:#f9fafb">
+          <span style="font-size:22px">+</span><span>Add photo</span>
+        </label>
+        <input type="file" id="photo-input-add" accept="image/*" style="display:none" onchange="addPhoto(event)">` : ''}
+    </div>
+
+    <!-- One-sentence description to help WISE get it right faster -->
+    <div style="margin-bottom:12px">
+      <div class="label" style="margin-bottom:6px">Describe this meal in one sentence <span style="font-weight:400;font-style:italic;text-transform:none;letter-spacing:0">(optional — improves accuracy)</span></div>
+      <textarea id="photo-desc" placeholder="e.g. Homemade stir-fry with chicken and mixed veg · Tacos from a local street food cart · Soup and sandwich from Starbucks · Lasagna from my office canteen"
+        style="width:100%;border:1px solid var(--border);border-radius:12px;padding:12px 14px;font-size:14px;outline:none;font-family:inherit;min-height:72px;resize:none;line-height:1.5;color:var(--text)"
+        oninput="state.photoDescription=this.value">${state.photoDescription}</textarea>
+    </div>
+
+    <div style="display:flex;gap:10px">
+      <button onclick="setState({photoDataUrls:[],photoDescription:''})" style="flex:1;padding:12px;border-radius:12px;border:1px solid var(--border);background:white;font-size:14px;color:var(--subtle);cursor:pointer">Clear</button>
+      <button onclick="runAnalysis()" style="flex:2;padding:12px;border-radius:12px;border:none;background:#111;color:white;font-size:14px;font-weight:600;cursor:pointer">Analyse ${photos.length > 1 ? photos.length + ' photos' : 'this meal'} →</button>
+    </div>
+    <div class="warning" style="margin-top:12px">
+      <div class="warning-icon">⚠️</div>
+      <div>
+        <div class="warning-title">Estimated analysis — not nutritional fact</div>
+        <div class="warning-body">Photo analysis uses visual estimation. Results can vary ±25%. WISE shows every assumption below so you can judge accuracy.</div>
+      </div>
+    </div>`;
+}
+
+function textTabContent() {
+  return `
+    <div class="info-box">
+      <span style="flex-shrink:0">✏️</span>
+      <span>Describe your meal in plain English. WISE will identify each ingredient, estimate portions, and calculate nutrition.</span>
+    </div>
+    ${contextToggleHTML()}
+    <textarea id="meal-text" placeholder="e.g. a yogurt bowl with blueberries, granola, banana, walnuts, honey and chia seeds"
+      style="width:100%;border:1px solid var(--border);border-radius:12px;padding:14px 16px;font-size:15px;outline:none;font-family:inherit;min-height:110px;resize:vertical;line-height:1.6;margin-bottom:4px"
+      onchange="state.mealText=this.value" oninput="state.mealText=this.value">${state.mealText}</textarea>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:4px">
+      <strong style="color:#374151">More detail = more accurate.</strong> "150g chicken breast, 1 cup cooked rice, handful of broccoli" beats "chicken and rice". Include amounts, cooking method, and any sauces or toppings.
+    </div>
+    <button class="btn-primary" onclick="runAnalysis()">Analyse this meal →</button>`;
+}
+
+function getIngredientRowsFromDOM() {
+  const rows = [];
+  for (let i = 0; i < 30; i++) {
+    const nameEl = document.getElementById(`ing-row-name-${i}`);
+    if (!nameEl) break;
+    const qtyEl  = document.getElementById(`ing-row-qty-${i}`);
+    const unitEl = document.getElementById(`ing-row-unit-${i}`);
+    rows.push({ name: nameEl.value, qty: qtyEl ? qtyEl.value : '', unit: unitEl ? unitEl.value : 'g' });
+  }
+  return rows;
+}
+function addIngredientRow() {
+  const rows = getIngredientRowsFromDOM();
+  rows.push({ name: '', qty: '', unit: 'g' });
+  setState({ ingredientRows: rows });
+}
+function removeIngredientRow(idx) {
+  const rows = getIngredientRowsFromDOM();
+  rows.splice(idx, 1);
+  setState({ ingredientRows: rows });
+}
+function parseAmountToGrams(amount) {
+  if (!amount) return null;
+  const s = amount.trim().toLowerCase();
+  const g   = s.match(/^([\d.]+)\s*g$/);       if (g)    return parseFloat(g[1]);
+  const ml  = s.match(/^([\d.]+)\s*ml$/);      if (ml)   return parseFloat(ml[1]);
+  const oz  = s.match(/^([\d.]+)\s*oz$/);      if (oz)   return Math.round(parseFloat(oz[1]) * 28.35);
+  const tb  = s.match(/^([\d.]+)\s*tbsp?/);    if (tb)   return Math.round(parseFloat(tb[1]) * 15);
+  const ts  = s.match(/^([\d.]+)\s*tsp/);      if (ts)   return Math.round(parseFloat(ts[1]) * 5);
+  const cup = s.match(/^([\d.]+)\s*cup/);      if (cup)  return Math.round(parseFloat(cup[1]) * 240);
+  if (/scoop/.test(s)) { const n = s.match(/[\d.]+/); return n ? Math.round(parseFloat(n[0]) * 30) : 30; }
+  const num = s.match(/^[\d.]+$/);             if (num)  return parseFloat(num[0]);
+  return null;
+}
+
+async function runTableAnalysis() {
+  const rows = getIngredientRowsFromDOM();
+  const filled = rows.filter(r => r.name.trim());
+  if (!filled.length) return;
+
+  setState({ analyseTab: 'text', analysisResult: null, analysisError: null,
+             ingredientRows: rows, screen: 'analyse', analysing: true });
+
+  try {
+    // Sequential lookups — parallel calls risk rate pressure causing dirty JSON responses
+    const unitMultipliers = { g: 1, ml: 1, oz: 28.35, tsp: 5, tbsp: 15, cup: 240 };
+    const fetched = [];
+    for (const row of filled) {
+      let per100Data, grams, confidence, reasoning;
+      const qty = parseFloat(row.qty) || 0;
+      try {
+        if (row.unit === 'piece') {
+          // Fetch per-piece weight from the edge function ("1 egg" → estimatedG ≈ 50g)
+          per100Data = await fetchPieceData(row.name.trim());
+          grams = Math.round((qty || 1) * per100Data.gramsPerPiece);
+          reasoning = `${qty || 1} ${qty === 1 ? 'piece' : 'pieces'} × ${per100Data.gramsPerPiece}g each = ${grams}g`;
+        } else {
+          per100Data = await fetchPer100(row.name.trim());
+          const mult = unitMultipliers[row.unit] || 1;
+          grams = qty > 0 ? Math.round(qty * mult) : 100;
+          reasoning = qty > 0 ? `User specified ${qty}${row.unit}` : 'Default 100g portion used';
+        }
+        confidence = 'High';
+      } catch(_e) {
+        // Single ingredient failed — use zero values rather than killing the whole analysis
+        per100Data = { cal: 0, protein: 0, fat: 0, carbs: 0, fibre: 0, emoji: '🍽️' };
+        grams = qty > 0 ? Math.round(qty * (unitMultipliers[row.unit] || 1)) : 100;
+        confidence = 'Low';
+        reasoning  = 'Nutritional lookup failed — values set to 0, edit to correct';
+      }
+      fetched.push({
+        name: row.name.trim(),
+        emoji: per100Data.emoji || '🍽️',
+        estimatedG: grams,
+        confidence,
+        reasoning,
+        per100: { cal: per100Data.cal||0, protein: per100Data.protein||0,
+                  fat: per100Data.fat||0, carbs: per100Data.carbs||0, fibre: per100Data.fibre||0 }
+      });
+    }
+
+    const mealText = filled.map(r => {
+      const qty = r.qty || '';
+      const unitLabel = r.unit === 'piece' ? (parseFloat(r.qty) === 1 ? 'piece' : 'pieces') : r.unit;
+      return qty ? `${qty} ${unitLabel} ${r.name.trim()}` : r.name.trim();
+    }).join(', ');
+    const names    = filled.map(r => r.name.trim());
+    const result = {
+      ambiguous: false,
+      summary: `This looks like a meal with ${names.join(', ')}.`,
+      identified: fetched,
+      assumptions: ['Nutritional data from USDA FoodData Central per ingredient', 'User-provided ingredient list — no visual estimation needed'],
+      confidence: 'High',
+      confidenceNote: 'Ingredients entered directly by user'
+    };
+
+    setState({ mealText, analysing: false, analysisResult: result, screen: 'results', ingredientsVerified: 'yes' });
+    await saveMealLog(result);
+  } catch(err) {
+    setState({ analysing: false, analysisError: err.message || 'Analysis failed. Please try again.' });
+  }
+}
+
+function renderAmbiguousResult(r) {
+  const reason = r.ambiguityReason || '';
+
+  // Extract the dish name Claude named in its reason string.
+  // Claude usually writes things like "This appears to be a fried rice dish" or
+  // "Beef bourguignon — sauce obscures proportions". Pull that out and use it in the copy.
+  function extractDishName(str) {
+    if (!str) return null;
+    const patterns = [
+      /this (?:appears?|seems?) to be (?:a |an )?([\w\s]{3,30}?)(?:\s*[-—,.;]|$)/i,
+      /appears? to be (?:a |an )?([\w\s]{3,30}?)(?:\s*[-—,.;]|$)/i,
+      /looks? like (?:a |an )?([\w\s]{3,30}?)(?:\s*[-—,.;]|$)/i,
+      /(?:is|are) (?:a |an )?([\w\s]{3,25}?) (?:dish|meal|bowl|recipe|stew|curry)/i,
+      /^([\w\s]{3,28}?) (?:dish|meal|bowl|where|with|that|–|—|-)/i,
+    ];
+    for (const pat of patterns) {
+      const m = str.match(pat);
+      if (m && m[1]) {
+        const candidate = m[1].trim().replace(/\s+/g, ' ');
+        // Reject generic single words and candidates that start with verbs/articles
+        const startsWithBadWord = /^(is|are|was|were|it |a |an |the |this |that )/i.test(candidate);
+        const isGenericSingle = /^(the|this|a|an|it|meal|dish|food|photo|image|picture|ingredients?)$/i.test(candidate);
+        if (!startsWithBadWord && !isGenericSingle) {
+          return candidate.charAt(0).toUpperCase() + candidate.slice(1).toLowerCase();
+        }
+      }
+    }
+    return null;
+  }
+
+  const dishName = extractDishName(reason);
+  const an = dishName && /^[aeiou]/i.test(dishName) ? 'an' : 'a';
+
+  // Detect category — isBlended requires drink-specific language, not just "blended"
+  const isBlended = /smoothie|shake|protein.shake|juice|blended.drink|liquid.drink/i.test(reason);
+  const isSauce   = /sauce|gravy|curry|stew|soup|dal|daal/i.test(reason);
+  const isHidden  = /hidden|inside|wrap|sandwich|pie|pastry|burger/i.test(reason);
+  const isMixed   = /fried.rice|mixed|stir.fry|stir-fry|rice.dish|noodle|pasta|composed|combined|proportion/i.test(reason);
+
+  const friendlyMsg = isBlended
+    ? `Looks like ${dishName ? an + ' ' + dishName : 'a smoothie or shake'} — something's been blended and I can't tell what went in from the outside. Tell me what you put in and I'll work it out.`
+    : isSauce
+    ? `That looks like ${dishName ? an + ' ' + dishName : 'a curry or stew'} — once everything's cooked together the sauce hides a lot. Tell me roughly what went in and I'll work it out.`
+    : isHidden
+    ? `That looks like ${dishName ? an + ' ' + dishName : 'something good'} — I can see the outside but not what's inside. Tell me what you put in and I'll crunch the numbers.`
+    : isMixed
+    ? `That looks like ${dishName ? an + ' ' + dishName : 'a mixed dish'} — I can see the ingredients but can't split out the exact amounts when it's all cooked together. Tell me roughly what went in and I'll work it out.`
+    : dishName
+    ? `That looks like ${an} ${dishName} — I can see what's there but I can't get accurate amounts from the photo alone. Tell me what went in and I'll crunch the numbers.`
+    : "I can see something delicious here but I can't work out the exact ingredients from the photo alone. Tell me what went in and I'll crunch the numbers.";
+
+  return `
+    <button class="btn-back" onclick="setState({screen:'analyse',analysisResult:null,assumptionsExpanded:false,ingredientRows:[{name:'',qty:'',unit:'g'},{name:'',qty:'',unit:'g'},{name:'',qty:'',unit:'g'},{name:'',qty:'',unit:'g'}]})">← Back</button>
+
+    <div style="text-align:center;padding:16px 0 24px">
+      <div style="font-size:48px;margin-bottom:12px">🔍</div>
+      <h2 style="font-size:21px;font-weight:600;letter-spacing:-.02em;margin-bottom:10px">WISE can't see inside this one</h2>
+      <p style="font-size:14px;color:#374151;line-height:1.6;max-width:340px;margin:0 auto">${friendlyMsg}</p>
+    </div>
+
+    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:14px;padding:14px 16px;margin-bottom:16px;display:flex;gap:10px">
+      <span style="font-size:18px;flex-shrink:0">⚠️</span>
+      <p style="font-size:13px;color:#92400e;line-height:1.6;margin:0">A confident-looking wrong answer is worse than no answer. WISE won't guess when it can't see what's actually in your meal.</p>
+    </div>
+
+    <div class="label" style="margin-bottom:10px">Get an accurate analysis</div>
+
+    <div class="card" style="margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+        <span style="font-size:20px">✏️</span>
+        <div style="font-size:14px;font-weight:600;color:var(--text)">What's in it?</div>
+        <div style="font-size:12px;color:var(--muted);margin-left:4px">amounts optional</div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 58px 68px 28px;gap:6px;margin-bottom:6px">
+        <div style="font-size:10px;font-family:monospace;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:0 4px">Ingredient</div>
+        <div style="font-size:10px;font-family:monospace;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:0 4px">Qty</div>
+        <div style="font-size:10px;font-family:monospace;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:0 4px">Unit</div>
+        <div></div>
+      </div>
+
+      ${state.ingredientRows.map((row, i) => `
+        <div style="display:grid;grid-template-columns:1fr 58px 68px 28px;gap:6px;margin-bottom:6px;align-items:center">
+          <input id="ing-row-name-${i}" type="text" value="${row.name.replace(/"/g,'&quot;')}" placeholder="${i===0 ? (isBlended?'oat milk':isSauce?'chicken':'e.g. eggs') : i===1 ? (isBlended?'protein powder':isSauce?'coconut milk':'e.g. rice') : 'ingredient'}" style="border:1px solid var(--border);border-radius:8px;padding:9px 10px;font-size:14px;outline:none;font-family:inherit;width:100%">
+          <input id="ing-row-qty-${i}" type="number" min="0" step="any" value="${row.qty}" placeholder="${i===0 ? (isBlended?'200':isSauce?'150':'') : ''}" style="border:1px solid var(--border);border-radius:8px;padding:9px 10px;font-size:14px;outline:none;font-family:inherit;width:100%;-moz-appearance:textfield">
+          <select id="ing-row-unit-${i}" style="border:1px solid var(--border);border-radius:8px;padding:9px 6px;font-size:13px;outline:none;font-family:inherit;width:100%;background:white;color:var(--text)">
+            <option value="g"    ${row.unit==='g'    ?'selected':''}>g</option>
+            <option value="ml"   ${row.unit==='ml'   ?'selected':''}>ml</option>
+            <option value="oz"   ${row.unit==='oz'   ?'selected':''}>oz</option>
+            <option value="tsp"  ${row.unit==='tsp'  ?'selected':''}>tsp</option>
+            <option value="tbsp" ${row.unit==='tbsp' ?'selected':''}>tbsp</option>
+            <option value="cup"  ${row.unit==='cup'  ?'selected':''}>cup</option>
+            <option value="piece"${row.unit==='piece'?'selected':''}>pcs</option>
+          </select>
+          <button onclick="removeIngredientRow(${i})" style="width:28px;height:28px;border-radius:6px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;${state.ingredientRows.length <= 1 ? 'opacity:0;pointer-events:none' : ''}">×</button>
+        </div>
+      `).join('')}
+
+      <button onclick="addIngredientRow()" style="background:none;border:none;font-size:13px;color:var(--subtle);cursor:pointer;padding:4px 0;margin-top:2px">+ Add ingredient</button>
+      <button onclick="runTableAnalysis()" style="width:100%;padding:13px;border-radius:12px;border:none;background:#111;color:white;font-size:14px;font-weight:600;cursor:pointer;margin-top:12px">Analyse this meal →</button>
+    </div>
+
+    <button onclick="setState({screen:'analyse',analyseTab:'photo',photoDataUrls:[],analysisResult:null,analysisError:null})"
+      style="width:100%;display:flex;align-items:flex-start;gap:14px;padding:16px;background:white;border:1px solid var(--border);border-radius:14px;margin-bottom:10px;cursor:pointer;text-align:left;box-shadow:var(--shadow)">
+      <span style="font-size:24px;flex-shrink:0">🏷️</span>
+      <div>
+        <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:3px">Upload the nutrition label</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.5">Store-bought or packaged? A label photo gives exact values — better than any estimate.</div>
+      </div>
+      <span style="font-size:16px;color:#d1d5db;margin-left:auto;flex-shrink:0;align-self:center">→</span>
+    </button>
+
+    <p style="text-align:center;font-size:12px;color:#d1d5db;margin-top:16px">WISE · Honest analysis, not best guesses</p>`;
+}
+
+function renderResults() {
+  const r = state.analysisResult;
+  if (!r || !r.identified) return `<div class="error-box">No results to display.</div>`;
+
+  // Ambiguous photo — show handoff instead of fake results (never for text analysis)
+  if (r.ambiguous && state.analyseTab === 'photo') return renderAmbiguousResult(r);
+
+  const targets  = calcTargets(state.profile);
+  const totals   = totalsFrom(r.identified);
+  const gaps     = getGaps(totals, targets);
+  const isPhoto  = state.analyseTab === 'photo';
+  const calPct   = Math.round(totals.cal / targets.cal * 100);
+  const confCls  = r.confidence === 'High' ? 'high' : r.confidence === 'Medium' ? 'medium' : 'low';
+  const HARD_ESTIMATE = ['curry','soup','stew','smoothie','shake','dal','dahl','sauce','gravy','casserole','broth','chowder','korma','masala','tikka','wrap','burrito'];
+  const hardDish = r.identified.some(item => HARD_ESTIMATE.some(kw => item.name.toLowerCase().includes(kw)));
+  const skipWords = ['plate','fork','knife','spoon','cutlery','laptop','background','table','bowl','context'];
+  const filteredAssumptions = (r.assumptions||[]).filter(a => !skipWords.some(w => a.toLowerCase().includes(w)));
+
+  const mealScore  = calcMealScore(totals, targets, state.profile);
+  const vText      = generateVerdictText(mealScore, totals, targets, state.profile);
+  const scoreColor = mealScore >= 78 ? '#16a34a' : mealScore >= 55 ? '#d97706' : '#dc2626';
+  const scoreBg    = mealScore >= 78 ? '#f0fdf4' : mealScore >= 55 ? '#fffbeb' : '#fef2f2';
+  const scoreBdr   = mealScore >= 78 ? '#bbf7d0' : mealScore >= 55 ? '#fde68a' : '#fecaca';
+  const showIngredients = state.ingredientsExpanded || state.ingredientsVerified === 'no';
+
+  return `
+    <button class="btn-back" onclick="setState({screen: state.viewingLog ? 'home' : 'analyse', analysisResult: state.viewingLog ? state.analysisResult : null, viewingLog: null, assumptionsExpanded:false})">← Back</button>
+
+    <!-- Photo -->
+    ${isPhoto && state.photoDataUrls.length > 0 ? `
+    <div style="margin-bottom:14px">
+      <img src="${state.photoDataUrls[0]}" style="width:100%;max-height:260px;border-radius:14px;object-fit:cover;border:1px solid var(--border);display:block">
+      ${state.photoDataUrls.length > 1 ? `<div style="display:flex;gap:6px;margin-top:6px">${state.photoDataUrls.slice(1).map(u=>`<img src="${u}" style="width:56px;height:56px;border-radius:8px;object-fit:cover;border:1px solid var(--border)">`).join('')}</div>` : ''}
+    </div>` : ''}
+
+    <!-- Header -->
+    <div style="margin-bottom:16px">
+      <div class="mono" style="font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px">${isPhoto ? '📷 Photo' : '✏️ Description'} · ${r.identified.length} ingredients</div>
+      <h2 style="font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.2">What's in this meal</h2>
+    </div>
+
+    <!-- Meal summary + inline verification -->
+    <div class="card" style="margin-bottom:12px">
+      <p style="font-size:15px;color:var(--text);line-height:1.5;margin-bottom:6px">${r.summary || 'Meal identified.'}</p>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:12px">${totals.cal} kcal · <strong style="color:var(--text)">${calPct}%</strong> of your daily target</div>
+      ${state.ingredientsVerified === null ? `
+      <div style="font-size:13px;color:var(--subtle);margin-bottom:8px">Did WISE get this right?</div>
+      <div style="display:flex;gap:8px">
+        <button onclick="setState({ingredientsVerified:'yes'})" style="flex:1;padding:10px;border-radius:10px;border:1px solid #d1fae5;background:#f0fdf4;color:#16a34a;font-size:13px;font-weight:600;cursor:pointer">✓ Looks right</button>
+        <button onclick="setState({ingredientsVerified:'no',ingredientsExpanded:true})" style="flex:1;padding:10px;border-radius:10px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;font-size:13px;font-weight:600;cursor:pointer">✗ Something's off</button>
+      </div>` : state.ingredientsVerified === 'yes' ? `
+      <div style="display:flex;align-items:center;gap:6px;padding:8px 10px;background:#f0fdf4;border-radius:8px;border:1px solid #d1fae5">
+        <span style="color:#16a34a;font-size:14px">✓</span>
+        <span style="font-size:12px;color:#16a34a">Ingredients confirmed</span>
+        <button onclick="setState({ingredientsVerified:null})" style="margin-left:auto;background:none;border:none;font-size:11px;color:var(--muted);cursor:pointer;text-decoration:underline;padding:0">undo</button>
+      </div>` : ''}
+    </div>
+
+    <!-- Ingredient breakdown — first so user verifies before trusting the numbers -->
+    <button id="ingredient-breakdown" onclick="setState({ingredientsExpanded:!state.ingredientsExpanded})"
+      style="width:100%;display:flex;align-items:center;justify-content:space-between;background:white;border:1px solid var(--border);border-radius:${showIngredients ? '12px 12px 0 0' : '12px'};padding:12px 16px;margin-bottom:${showIngredients ? '0' : '12px'};cursor:pointer;box-shadow:var(--shadow)">
+      <span style="font-size:13px;color:var(--subtle)">🥦 Ingredient breakdown <span style="color:var(--muted);font-size:12px">(${r.identified.length} items)</span></span>
+      <span style="font-size:11px;color:var(--muted)">${showIngredients ? '▲ hide' : '▼ show'}</span>
+    </button>
+    ${showIngredients ? `
+    <div class="card" style="border-top-left-radius:0;border-top-right-radius:0;border-top:none;margin-bottom:12px">
+      ${state.ingredientsVerified === 'no' ? `
+      <p style="font-size:12px;color:var(--subtle);margin-bottom:14px">Edit the name or gram amount for any ingredient below, then tap Save corrections.</p>
+      ${r.identified.map((item, i) => `
+        <div style="padding:10px 0;border-bottom:1px solid #f3f4f6">
+          <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+            <span style="font-size:22px;flex-shrink:0">${item.emoji || '🍽️'}</span>
+            <input type="text" id="corr-name-${i}" value="${(item.name||'').replace(/"/g,'&quot;')}"
+              style="flex:1;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:14px;font-weight:500;outline:none;font-family:inherit"
+              placeholder="Ingredient name">
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;padding-left:36px">
+            <span style="font-size:13px;color:var(--subtle)">Amount:</span>
+            <input type="number" id="corr-grams-${i}" value="${item.estimatedG}" min="1" max="5000"
+              style="width:80px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:14px;font-weight:700;outline:none;font-family:monospace;text-align:right">
+            <span style="font-size:13px;color:var(--subtle)">g</span>
+            <button onclick="deleteCorrIngredient(${i})" style="margin-left:auto;border:none;background:none;font-size:16px;cursor:pointer;opacity:.35;padding:4px;line-height:1">🗑️</button>
+          </div>
+        </div>`).join('')}
+      <button onclick="addCorrIngredient()" style="width:100%;padding:10px;border-radius:12px;border:1px dashed var(--border);background:white;color:var(--subtle);font-size:13px;cursor:pointer;margin-top:10px">+ Add ingredient</button>
+      <button onclick="saveCorrectedIngredients()" style="width:100%;padding:13px;border-radius:12px;border:none;background:#111;color:white;font-size:14px;font-weight:600;cursor:pointer;margin-top:8px">Save corrections</button>` : `
+      ${r.identified.map((item, i) => `
+        <div class="ing-row">
+          <span class="ing-emoji" onclick="toggleExpand(${i})" style="cursor:pointer">${item.emoji || '🍽️'}</span>
+          <div style="flex:1;cursor:pointer" onclick="toggleExpand(${i})">
+            <div class="ing-name">${item.name}</div>
+            ${state.expandedIdx === i ? `
+              <div class="ing-note" style="margin-top:4px">"${item.reasoning}"</div>
+              <div class="expand-detail">
+                <div class="expand-cell" style="background:var(--protein-bg)"><div class="expand-val" style="color:var(--protein)">${((item.per100?.protein||0)*item.estimatedG/100).toFixed(1)}g</div><div class="expand-lbl">Protein</div></div>
+                <div class="expand-cell" style="background:var(--fat-bg)"><div class="expand-val" style="color:var(--fat)">${((item.per100?.fat||0)*item.estimatedG/100).toFixed(1)}g</div><div class="expand-lbl">Fat</div></div>
+                <div class="expand-cell" style="background:var(--carbs-bg)"><div class="expand-val" style="color:var(--carbs)">${((item.per100?.carbs||0)*item.estimatedG/100).toFixed(1)}g</div><div class="expand-lbl">Carbs</div></div>
+                <div class="expand-cell" style="background:var(--fibre-bg)"><div class="expand-val" style="color:var(--fibre)">${((item.per100?.fibre||0)*item.estimatedG/100).toFixed(1)}g</div><div class="expand-lbl">Fibre</div></div>
+              </div>` : ''}
+          </div>
+          <div class="ing-right" style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
+            <div class="ing-grams" onclick="toggleExpand(${i})" style="cursor:pointer">~${item.estimatedG}g</div>
+            ${state.expandedIdx === i ? confBadge(item.confidence || 'Medium') : ''}
+            <div style="font-size:10px;color:#d1d5db;cursor:pointer;margin-top:4px" onclick="toggleExpand(${i})">${state.expandedIdx === i ? '▲' : '▼'}</div>
+          </div>
+        </div>`).join('')}
+      <button onclick="setState({ingredientsVerified:'no',ingredientsExpanded:true})" style="margin-top:10px;background:none;border:none;font-size:12px;color:var(--muted);cursor:pointer;text-decoration:underline;padding:0">Something look wrong? Edit ingredients →</button>`}
+    </div>` : ''}
+
+    <!-- THE VERDICT -->
+    <div class="label" style="font-weight:700;margin-bottom:8px">The Verdict</div>
+    <div style="background:${scoreBg};border:1px solid ${scoreBdr};border-radius:16px;padding:16px 18px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:10px">
+        <div style="font-size:34px;font-weight:700;color:${scoreColor};line-height:1;font-variant-numeric:tabular-nums">${mealScore}<span style="font-size:16px;font-weight:500;opacity:.6">/100</span></div>
+        <div style="flex:1">
+          <div style="height:6px;background:rgba(0,0,0,0.08);border-radius:99px;overflow:hidden">
+            <div style="height:100%;width:${mealScore}%;background:${scoreColor};border-radius:99px"></div>
+          </div>
+        </div>
+      </div>
+      <p style="font-size:14px;color:#374151;line-height:1.65;margin:0">${vText}</p>
+    </div>
+
+    <!-- THE NUMBERS -->
+    <div class="label" style="font-weight:700;margin-bottom:8px">The Numbers</div>
+    ${(() => {
+      const calOver = totals.cal > targets.cal * 1.05;
+      const calCol  = calOver ? '#dc2626' : '#374151';
+      const calBar  = Math.min(totals.cal / targets.cal * 100, 100);
+      return `
+    <div style="background:${calOver?'#fef2f2':'#f9fafb'};border:1px solid ${calOver?'#fecaca':'var(--border)'};border-radius:12px;padding:12px 16px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+        <span style="font-size:22px;font-weight:700;color:${calCol};letter-spacing:-.03em">${totals.cal}<span style="font-size:13px;font-weight:400;color:var(--muted);margin-left:3px">kcal</span></span>
+        <span style="font-size:11px;color:${calCol};font-family:monospace;opacity:.85">${calPct}% of daily target</span>
+      </div>
+      <div style="height:5px;background:rgba(0,0,0,0.08);border-radius:99px;margin-bottom:5px">
+        <div style="height:100%;width:${calBar}%;background:${calCol};border-radius:99px"></div>
+      </div>
+      <div style="font-size:10px;color:var(--muted);font-family:monospace;text-transform:uppercase;letter-spacing:.06em">Target ${targets.cal} kcal/day</div>
+    </div>`;
+    })()}
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px">
+      ${macroTile('Protein', totals.protein, targets.protein, 'var(--protein)', 'var(--protein-bg)')}
+      ${macroTile('Carbs',   totals.carbs,   targets.carbs,   'var(--carbs)',   'var(--carbs-bg)')}
+      ${macroTile('Fat',     totals.fat,     targets.fat,     'var(--fat)',     'var(--fat-bg)')}
+      ${macroTile('Fibre',   totals.fibre,   targets.fibre,   'var(--fibre)',   'var(--fibre-bg)')}
+    </div>
+
+    <!-- Gap analysis -->
+    <div class="card" style="margin-bottom:12px">
+      <div class="label" style="margin-bottom:2px">Today's Gap Analysis</div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:16px;font-style:italic">Based on this meal only · Log more meals for your full day picture</p>
+      ${gaps.map((g, i) => `
+        <div style="display:flex;gap:12px;${i < gaps.length - 1 ? 'margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid #f3f4f6' : ''}">
+          <div class="impact impact-${g.impact}">${g.impact}</div>
+          <div>
+            <div class="mono" style="font-size:11px;color:var(--muted);margin-bottom:3px">${g.label}</div>
+            <div style="font-size:13px;color:#374151;line-height:1.5">${g.text}</div>
+          </div>
+        </div>`).join('')}
+      <div style="margin-top:16px;padding:14px;background:#f9fafb;border-radius:12px;border:1px solid var(--border)">
+        <div style="margin-bottom:10px"><span style="font-size:12px;font-weight:600;color:#dc2626">⚠ You are missing key nutrients</span></div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">
+          ${['Vitamin D','Iron','Magnesium','Zinc','Vitamin B12','Omega-3'].map(n => `<div style="font-size:11px;color:#9ca3af">${n}</div>`).join('')}
+        </div>
+        <p style="font-size:11px;color:var(--muted);margin:0">Full micronutrient breakdown coming soon.</p>
+      </div>
+    </div>
+
+    <!-- Logging nudge / timestamp -->
+    ${!state.viewingLog ? `
+    ${state.mealSaveError
+      ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:12px 16px;margin-bottom:12px;font-size:12px;color:#dc2626;line-height:1.5">⚠️ Couldn't save this meal: ${state.mealSaveError}</div>`
+      : `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:12px 16px;margin-bottom:12px;display:flex;gap:10px;align-items:center">
+      <span style="font-size:18px;flex-shrink:0">📊</span>
+      <div>
+        <p style="font-size:12px;color:#166534;line-height:1.5;margin:0 0 4px">Meal saved.</p>
+        <button onclick="setState({screen:'home',mealSaveError:null});loadMealLogs();" style="background:none;border:none;padding:0;font-size:12px;color:#15803d;font-weight:600;cursor:pointer;font-family:inherit;text-decoration:underline">← Back to home to see your meal history</button>
+      </div>
+    </div>`}` : `
+    <div style="background:#f9fafb;border:1px solid var(--border);border-radius:12px;padding:10px 14px;margin-bottom:12px">
+      <p style="font-size:11px;color:var(--muted);font-family:monospace;margin:0">📅 ${new Date(state.viewingLog.logged_at).toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' })} · ${new Date(state.viewingLog.logged_at).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' })}</p>
+    </div>`}
+
+    <!-- Assumptions — collapsed by default -->
+    <button onclick="toggleAssumptions()" style="width:100%;display:flex;align-items:center;justify-content:space-between;background:white;border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:${state.assumptionsExpanded ? '0' : '12px'};cursor:pointer;box-shadow:var(--shadow)">
+      <span style="font-size:13px;color:var(--subtle)">📋 How WISE analysed this <span style="color:var(--muted);font-size:12px">(${filteredAssumptions.length} assumptions)</span></span>
+      <span style="font-size:11px;color:var(--muted)">${state.assumptionsExpanded ? '▲' : '▼'}</span>
+    </button>
+    ${state.assumptionsExpanded ? `
+    <div class="card" style="border-top-left-radius:0;border-top-right-radius:0;margin-bottom:12px;border-top:none">
+      ${filteredAssumptions.map(a => `
+        <div style="display:flex;gap:10px;font-size:13px;color:#374151;line-height:1.5;margin-bottom:10px">
+          <span style="color:#d1d5db;flex-shrink:0;margin-top:2px">→</span><span>${a}</span>
+        </div>`).join('')}
+      <div style="margin-top:10px;padding:10px 14px;background:#f9fafb;border-radius:10px;display:flex;align-items:center;gap:10px">
+        <span class="badge badge-${confCls}">${(r.confidence||'').toUpperCase()} CONFIDENCE</span>
+        <span style="font-size:12px;color:var(--subtle)">${r.confidenceNote||''}</span>
+      </div>
+    </div>` : ''}
+
+    ${!state.viewingLog ? `<button class="btn-primary" onclick="setState({screen:'gaps'})">→ Check today's gaps</button>` : ''}
+
+    ${isPhoto ? `<p style="text-align:center;font-size:11px;color:#d1d5db;margin-top:4px">Photo estimates can vary ±25% · USDA FoodData Central</p>` : `<p style="text-align:center;font-size:11px;color:#d1d5db;margin-top:4px">USDA FoodData Central · AI-powered analysis</p>`}`;
+}
+
+function renderFuel() {
+  const act = state.fuelActivity;
+  const isRest = act === 'rest';
+
+  function actBtn(id, label, emoji) {
+    return `<button onclick="setState({fuelActivity:'${id}'})" style="flex:1;padding:11px 4px;border-radius:10px;border:1px solid ${act===id?'#111':'var(--border)'};background:${act===id?'#111':'white'};color:${act===id?'white':'var(--subtle)'};font-size:13px;font-weight:500;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px">
+      <span style="font-size:18px">${emoji}</span><span>${label}</span>
+    </button>`;
+  }
+  function selBtn(key, id, label, current) {
+    return `<button onclick="setState({${key}:'${id}'})" style="flex:1;padding:10px 0;border-radius:10px;border:1px solid ${current===id?'#111':'var(--border)'};background:${current===id?'#111':'white'};color:${current===id?'white':'var(--subtle)'};font-size:13px;font-weight:500;cursor:pointer">${label}</button>`;
+  }
+
+  if (state.fuelPlanning) {
+    return `
+      <button class="btn-back" onclick="setState({screen:'home'})">← Back</button>
+      <div style="text-align:center;padding:48px 0">
+        <div style="font-size:36px;margin-bottom:16px">⚡</div>
+        <div class="spinner"></div>
+        <div style="font-size:15px;font-weight:500;margin-bottom:6px">Building your fuel plan…</div>
+        <div class="mono" style="font-size:12px;color:var(--muted);animation:pulse 1.5s ease-in-out infinite">Calculating targets and timing your meals</div>
+      </div>`;
+  }
+
+  return `
+    <button class="btn-back" onclick="setState({screen:'home'})">← Back</button>
+    <div class="mono" style="font-size:11px;color:var(--muted);letter-spacing:.2em;text-transform:uppercase;margin-bottom:6px">Pro Feature</div>
+    <h2 style="font-size:26px;font-weight:600;letter-spacing:-.03em;margin-bottom:4px">Plan my fuel</h2>
+    <p style="font-size:14px;color:var(--subtle);margin-bottom:24px">Tell WISE what you're doing today and get an ingredient-level meal plan built around your training.</p>
+
+    ${state.fuelError ? `<div class="error-box">⚠ ${state.fuelError}</div>` : ''}
+
+    <div class="card">
+      <div class="label">Today's training</div>
+      <div style="display:flex;gap:8px;margin-bottom:${isRest ? '0' : '20px'}">
+        ${actBtn('strength', 'Strength', '🏋️')}
+        ${actBtn('cardio',   'Cardio',   '🏃')}
+        ${actBtn('mixed',    'Mixed',    '⚡')}
+        ${actBtn('rest',     'Rest day', '😴')}
+      </div>
+
+      <div style="margin-bottom:20px">
+        <div class="label">Meals today</div>
+        <div style="display:flex;gap:8px">
+          ${[2,3,4,5].map(n => `<button onclick="setState({fuelMeals:${n}})" style="flex:1;padding:10px 0;border-radius:10px;border:1px solid ${state.fuelMeals===n?'#111':'var(--border)'};background:${state.fuelMeals===n?'#111':'white'};color:${state.fuelMeals===n?'white':'var(--subtle)'};font-size:14px;font-weight:600;cursor:pointer">${n}</button>`).join('')}
+        </div>
+      </div>
+
+      ${!isRest ? `
+      <div style="margin-bottom:20px">
+        <div class="label">Effort level</div>
+        <div style="display:flex;gap:8px">
+          ${selBtn('fuelEffort','light','Light 💧',state.fuelEffort)}
+          ${selBtn('fuelEffort','moderate','Moderate 🔥',state.fuelEffort)}
+          ${selBtn('fuelEffort','hard','Hard 💥',state.fuelEffort)}
+        </div>
+      </div>
+
+      <div>
+        <div class="label">Training time</div>
+        <div style="display:flex;gap:8px">
+          ${selBtn('fuelWhen','morning','Morning 🌅',state.fuelWhen)}
+          ${selBtn('fuelWhen','lunchtime','Lunchtime ☀️',state.fuelWhen)}
+          ${selBtn('fuelWhen','afternoon','Afternoon 🌤',state.fuelWhen)}
+          ${selBtn('fuelWhen','evening','Evening 🌙',state.fuelWhen)}
+        </div>
+      </div>` : `
+      <p style="font-size:13px;color:var(--muted);margin-top:12px;font-style:italic">Rest day plan: balanced macros across 3–4 meals, moderate carbs, high protein.</p>`}
+    </div>
+
+    <button class="btn-primary" onclick="generateFuelPlan()">Generate my fuel plan →</button>`;
+}
+
+function renderFuelResults() {
+  const plan = state.fuelPlan;
+  if (!plan || !plan.meals) return `<div class="error-box">No plan to display.</div>`;
+
+  const t = plan._targets || calcTargets(state.profile);
+
+  function slotEmoji(slot) {
+    const s = (slot || '').toLowerCase();
+    if (s.includes('breakfast'))                        return '🌅';
+    if (s.includes('pre-train') || s.includes('pre train') || s.includes('pre-workout')) return '⚡';
+    if (s.includes('post-train') || s.includes('post train') || s.includes('post-workout') || s.includes('recovery')) return '💪';
+    if (s.includes('lunch'))                            return '☀️';
+    if (s.includes('dinner') || s.includes('supper'))   return '🌙';
+    if (s.includes('snack'))                            return '🍎';
+    if (s.includes('intra') || s.includes('during'))    return '🏃';
+    return '🍽️';
+  }
+
+  return `
+    <button class="btn-back" onclick="setState({screen:'fuel',fuelPlan:null})">← Back</button>
+    <div style="margin-bottom:20px">
+      <div class="mono" style="font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px">⚡ Fuel Plan · ${state.fuelActivity === 'rest' ? 'Rest Day' : state.fuelEffort + ' ' + state.fuelActivity}</div>
+      <h2 style="font-size:24px;font-weight:600;letter-spacing:-.03em;line-height:1.2">${plan.dayType || "Today's Fuel Plan"}</h2>
+    </div>
+
+    <!-- Daily targets strip -->
+    <div class="card" style="margin-bottom:4px">
+      <div class="label" style="margin-bottom:10px">Today's adjusted targets</div>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:4px">
+        ${[['kcal',t.cal,'var(--text)'],['Protein',t.protein+'g','var(--protein)'],['Carbs',t.carbs+'g','var(--carbs)'],['Fat',t.fat+'g','var(--fat)'],['Fibre',t.fibre+'g','var(--fibre)']].map(([lbl,val,col])=>`
+        <div style="text-align:center">
+          <div style="font-size:14px;font-weight:700;color:${col}">${val}</div>
+          <div style="font-size:9px;color:var(--muted);font-family:monospace;text-transform:uppercase;margin-top:2px">${lbl}</div>
+        </div>`).join('')}
+      </div>
+    </div>
+
+    <!-- How did we get here -->
+    <button onclick="setState({fuelTargetsExpanded:!state.fuelTargetsExpanded})"
+      style="width:100%;display:flex;align-items:center;justify-content:space-between;background:white;border:1px solid var(--border);border-top:none;border-bottom-left-radius:12px;border-bottom-right-radius:12px;padding:10px 16px;margin-bottom:12px;cursor:pointer">
+      <span style="font-size:12px;color:var(--subtle)">💡 How did we get to these numbers?</span>
+      <span style="font-size:11px;color:var(--muted)">${state.fuelTargetsExpanded ? '▲' : '▼'}</span>
+    </button>
+    ${renderFuelTargetsBreakdown(t)}
+
+    <!-- Meal cards -->
+    ${plan.meals.map(meal => `
+    <div class="card" style="margin-bottom:10px">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px">
+        <div style="font-size:16px;font-weight:600">${slotEmoji(meal.slot)} ${meal.slot}</div>
+        <div class="mono" style="font-size:11px;color:var(--muted)">${meal.mealMacros?.cal || ''}${meal.mealMacros?.cal ? ' kcal' : ''}</div>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">${meal.timing || ''}</div>
+      ${meal.purpose ? `<div style="font-size:13px;color:var(--subtle);font-style:italic;margin-bottom:12px;line-height:1.5;padding:10px 12px;background:#f9fafb;border-radius:8px">"${meal.purpose}"</div>` : ''}
+
+      <div style="margin-bottom:10px">
+        ${(meal.ingredients || []).map(ing => `
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f9fafb">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:18px">${ing.emoji || '🍽️'}</span>
+              <div>
+                <div style="font-size:13px;font-weight:500">${ing.name}</div>
+                ${ing.note ? `<div style="font-size:11px;color:var(--muted);font-style:italic">${ing.note}</div>` : ''}
+              </div>
+            </div>
+            <div class="mono" style="font-size:13px;font-weight:600;color:var(--subtle);flex-shrink:0;margin-left:8px">${ing.amount}</div>
+          </div>`).join('')}
+      </div>
+
+      ${meal.mealMacros ? `
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${meal.mealMacros.protein ? `<span style="font-size:11px;padding:3px 8px;border-radius:99px;background:var(--protein-bg);color:var(--protein);font-family:monospace">${meal.mealMacros.protein}g P</span>` : ''}
+        ${meal.mealMacros.carbs   ? `<span style="font-size:11px;padding:3px 8px;border-radius:99px;background:var(--carbs-bg);color:var(--carbs);font-family:monospace">${meal.mealMacros.carbs}g C</span>` : ''}
+        ${meal.mealMacros.fat     ? `<span style="font-size:11px;padding:3px 8px;border-radius:99px;background:var(--fat-bg);color:var(--fat);font-family:monospace">${meal.mealMacros.fat}g F</span>` : ''}
+        ${meal.mealMacros.fibre   ? `<span style="font-size:11px;padding:3px 8px;border-radius:99px;background:var(--fibre-bg);color:var(--fibre);font-family:monospace">${meal.mealMacros.fibre}g Fi</span>` : ''}
+      </div>` : ''}
+    </div>`).join('')}
+
+    <!-- Day notes -->
+    ${plan.dayNotes && plan.dayNotes.length ? `
+    <div class="card" style="margin-bottom:12px">
+      <div class="label">Key notes for today</div>
+      ${plan.dayNotes.map(note => `
+        <div style="display:flex;gap:10px;font-size:13px;color:#374151;line-height:1.5;margin-bottom:10px">
+          <span style="color:#d1d5db;flex-shrink:0;margin-top:2px">→</span><span>${note}</span>
+        </div>`).join('')}
+    </div>` : ''}
+
+    ${renderMicroNudge(state.profile.goal)}
+
+    <button class="btn-secondary" onclick="setState({screen:'fuel',fuelPlan:null})">← Generate a new plan</button>
+    <div class="mono" style="text-align:center;font-size:11px;color:#d1d5db;margin-top:16px">WISE · Ingredient-level fuel planning</div>`;
+}
+
+function renderGaps() {
+  const targets    = calcTargets(state.profile);
+  const todayStr   = new Date().toDateString();
+
+  // Filter mealLogs to today only
+  const todayLogs  = state.mealLogs.filter(log => log.logged_at && new Date(log.logged_at).toDateString() === todayStr);
+
+  // Sum running totals
+  const running = todayLogs.reduce((acc, log) => {
+    const t = log.totals || {};
+    return {
+      cal:     Math.round(acc.cal     + (t.cal     || 0)),
+      protein: +((acc.protein + (t.protein || 0)).toFixed(1)),
+      fat:     +((acc.fat     + (t.fat     || 0)).toFixed(1)),
+      carbs:   +((acc.carbs   + (t.carbs   || 0)).toFixed(1)),
+      fibre:   +((acc.fibre   + (t.fibre   || 0)).toFixed(1)),
+    };
+  }, { cal: 0, protein: 0, fat: 0, carbs: 0, fibre: 0 });
+
+  const gaps   = getGaps(running, targets);
+  const calPct = targets.cal > 0 ? Math.round(running.cal / targets.cal * 100) : 0;
+  const goal   = { fuel:'Performance', muscle:'Build Muscle', fat:'Lose Fat', recomp:'Recomposition' }[state.profile.goal];
+  const dateLabel = new Date().toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' });
+
+  return `
+    <button class="btn-back" onclick="setState({screen:'home'})">← Back</button>
+
+    <div style="margin-bottom:20px">
+      <div class="mono" style="font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px">🔍 Daily Gap Analysis</div>
+      <h2 style="font-size:26px;font-weight:600;letter-spacing:-.03em;line-height:1.2">Check my gaps</h2>
+      <p style="font-size:13px;color:var(--subtle);margin-top:4px">${dateLabel}</p>
+    </div>
+
+    <!-- Running totals vs targets -->
+    <div class="card" style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div class="label" style="margin-bottom:0">Today so far</div>
+        <div class="mono" style="font-size:11px;color:${calPct > 105 ? '#dc2626' : calPct > 80 ? '#d97706' : 'var(--muted)'}">${calPct}% of target · ${goal}</div>
+      </div>
+      ${trackerBar('Calories', running.cal,     targets.cal,     '#374151',       ' kcal')}
+      ${trackerBar('Protein',  running.protein, targets.protein, 'var(--protein)')}
+      ${trackerBar('Carbs',    running.carbs,   targets.carbs,   'var(--carbs)')}
+      ${trackerBar('Fat',      running.fat,      targets.fat,    'var(--fat)')}
+      ${trackerBar('Fibre',    running.fibre,   targets.fibre,   'var(--fibre)')}
+    </div>
+
+    <!-- Gap recommendations -->
+    <div class="card" style="margin-bottom:12px">
+      <div class="label" style="margin-bottom:2px">What you should eat</div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:16px;font-style:italic">${todayLogs.length} meal${todayLogs.length !== 1 ? 's' : ''} logged · gaps against full daily target</p>
+      ${gaps.length > 0 ? gaps.map((g, i) => `
+        <div style="display:flex;gap:12px;${i < gaps.length - 1 ? 'margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid #f3f4f6' : ''}">
+          <div class="impact impact-${g.impact}">${g.impact}</div>
+          <div>
+            <div class="mono" style="font-size:11px;color:var(--muted);margin-bottom:3px">${g.label}</div>
+            <div style="font-size:13px;color:#374151;line-height:1.5">${g.text}</div>
+          </div>
+        </div>`).join('') : `<p style="font-size:13px;color:#16a34a;margin:0">✓ You're hitting your macro targets today — great work.</p>`}
+    </div>
+
+    <!-- Micronutrients -->
+    ${renderMicroNudge(state.profile.goal)}
+
+    <!-- Slot-based meal view -->
+    ${(() => {
+      const slots = [
+        { id: 'breakfast', label: 'Breakfast', emoji: '🌅' },
+        { id: 'lunch',     label: 'Lunch',     emoji: '☀️' },
+        { id: 'dinner',    label: 'Dinner',    emoji: '🌙' },
+        { id: 'snack',     label: 'Snack',     emoji: '🍎' },
+      ];
+      // Group today's logs by slot; logs without a slot go into 'untagged'
+      const bySlot = {};
+      const untagged = [];
+      todayLogs.forEach(log => {
+        const slot = log.context?.slot || null;
+        if (slot) { (bySlot[slot] = bySlot[slot] || []).push(log); }
+        else { untagged.push(log); }
+      });
+      const hasAnySlotData = slots.some(s => bySlot[s.id]);
+      if (!hasAnySlotData && untagged.length === 0) {
+        return `
+        <div style="text-align:center;padding:32px 16px;background:white;border:1px solid var(--border);border-radius:16px;margin-bottom:12px">
+          <div style="font-size:36px;margin-bottom:12px">🍽️</div>
+          <div style="font-size:15px;font-weight:500;color:var(--text);margin-bottom:8px">Nothing logged yet today</div>
+          <p style="font-size:13px;color:var(--muted);line-height:1.5;max-width:280px;margin:0 auto">Analyse a meal to start building today's picture.</p>
+        </div>`;
+      }
+      // Slot rows
+      const slotRows = slots.map(s => {
+        const logs = bySlot[s.id] || [];
+        const slotCal = logs.reduce((sum, l) => sum + (l.totals?.cal || 0), 0);
+        if (logs.length === 0) {
+          return `
+          <div style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:white;border:1px solid var(--border);border-radius:12px;margin-bottom:6px;opacity:0.5">
+            <span style="font-size:20px;flex-shrink:0">${s.emoji}</span>
+            <span style="font-size:13px;color:var(--muted);flex:1">${s.label}</span>
+            <span style="font-size:11px;font-family:monospace;color:var(--muted)">not logged</span>
+          </div>`;
+        }
+        return logs.map((log, li) => {
+          const idx   = state.mealLogs.indexOf(log);
+          const name  = extractShortMealName(log.summary) || (log.meal_data||[]).slice(0,3).map(it=>it.name).join(', ') || s.label;
+          const time  = new Date(log.logged_at).toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'});
+          return `
+          <div style="display:flex;align-items:stretch;background:white;border:1px solid var(--border);border-radius:12px;margin-bottom:6px;overflow:hidden;box-shadow:var(--shadow)">
+            <button onclick="openMealLog(${idx})" style="flex:1;display:flex;align-items:center;gap:12px;padding:11px 14px;cursor:pointer;text-align:left;background:none;border:none;min-width:0">
+              ${log.photo_data_url ? `<img src="${log.photo_data_url}" style="width:40px;height:40px;border-radius:8px;object-fit:cover;flex-shrink:0">` : `<span style="font-size:20px;flex-shrink:0;width:40px;text-align:center">${s.emoji}</span>`}
+              <div style="flex:1;min-width:0">
+                <div style="font-size:12px;font-family:monospace;color:var(--muted);margin-bottom:1px;text-transform:uppercase;letter-spacing:.06em">${s.label}</div>
+                <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</div>
+              </div>
+              <div style="text-align:right;flex-shrink:0;margin-right:4px">
+                <div style="font-size:12px;font-family:monospace;color:var(--subtle)">${log.totals?.cal || 0} kcal</div>
+                <div style="font-size:11px;color:var(--muted)">${time}</div>
+              </div>
+              <span style="color:#d1d5db;font-size:13px;flex-shrink:0">→</span>
+            </button>
+            <button onclick="deleteMealLog('${log.id}')" style="padding:0 12px;background:none;border:none;border-left:1px solid var(--border);color:#d1d5db;cursor:pointer;font-size:19px;flex-shrink:0;line-height:1" title="Delete meal">×</button>
+          </div>`;
+        }).join('');
+      }).join('');
+      // Untagged meals (logged before slot selector existed)
+      const untaggedRows = untagged.map(log => {
+        const idx  = state.mealLogs.indexOf(log);
+        const name = extractShortMealName(log.summary) || (log.meal_data||[]).slice(0,3).map(it=>it.name).join(', ') || 'Meal';
+        const time = new Date(log.logged_at).toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'});
+        return `
+        <div style="display:flex;align-items:stretch;background:white;border:1px solid var(--border);border-radius:12px;margin-bottom:6px;overflow:hidden;box-shadow:var(--shadow)">
+          <button onclick="openMealLog(${idx})" style="flex:1;display:flex;align-items:center;gap:12px;padding:11px 14px;cursor:pointer;text-align:left;background:none;border:none;min-width:0">
+            ${log.photo_data_url ? `<img src="${log.photo_data_url}" style="width:40px;height:40px;border-radius:8px;object-fit:cover;flex-shrink:0">` : `<div style="width:40px;height:40px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">🍽️</div>`}
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:1px">${name}</div>
+              <div style="font-size:11px;color:var(--muted);font-family:monospace">${time} · ${log.totals?.cal || 0} kcal</div>
+            </div>
+            <span style="color:#d1d5db;font-size:13px;flex-shrink:0">→</span>
+          </button>
+          <button onclick="deleteMealLog('${log.id}')" style="padding:0 12px;background:none;border:none;border-left:1px solid var(--border);color:#d1d5db;cursor:pointer;font-size:19px;flex-shrink:0;line-height:1" title="Delete meal">×</button>
+        </div>`;
+      }).join('');
+      return `
+      <div style="margin-bottom:12px">
+        <div class="label" style="margin-bottom:10px">Today's meals</div>
+        ${slotRows}
+        ${untaggedRows}
+      </div>`;
+    })()}
+
+    <button class="btn-primary" onclick="setState({screen:'analyse',analyseTab:'photo',photoDataUrls:[],mealText:'',mealContext:null,restaurantName:'',restaurantLocation:'',mealSlot:null,photoDescription:'',analysisResult:null,analysisError:null,analysing:false,viewingLog:null,mealSaveError:null})">+ Analyse a meal</button>
+
+    <div class="mono" style="margin-top:16px;text-align:center;font-size:11px;color:#d1d5db">Values from USDA FoodData Central · Mifflin-St Jeor BMR</div>`;
+}
+
+function renderPaywall() {
+  const isGap = state.pwFeature === 'gap';
+  const features = [
+    ['⚡', 'Activity-based fuel planning — ingredient-level plans tailored to your training'],
+    ['🔍', 'Full daily gap analysis — log multiple meals, track the whole day'],
+    ['📷', 'Photo upload for gap analysis — point your camera at any meal'],
+    ['📊', 'Macro history and weekly trends'],
+    ['🎯', 'Custom macro targets and diet protocols'],
+  ];
+  return `
+    <button class="btn-back" onclick="setState({screen:'home'})">← Back</button>
+    <div style="text-align:center;padding-bottom:24px">
+      <div style="font-size:40px;margin-bottom:12px">🔒</div>
+      <div class="mono" style="font-size:11px;color:var(--muted);letter-spacing:.15em;text-transform:uppercase;margin-bottom:6px">WISE Pro</div>
+      <h2 style="font-size:26px;font-weight:600;letter-spacing:-.03em;margin-bottom:8px">${isGap?'Check My Gaps':'Plan My Fuel'}</h2>
+      <p class="italic" style="color:var(--muted);font-size:14px">This feature is part of WISE Pro</p>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="label">Included in Pro</div>
+      ${features.map(([e,t]) => `
+        <div style="display:flex;gap:12px;margin-bottom:14px;align-items:flex-start">
+          <span style="font-size:18px;flex-shrink:0">${e}</span>
+          <div style="font-size:13px;color:#374151;line-height:1.5;padding-top:2px">${t}</div>
+        </div>`).join('')}
+    </div>
+    <button class="btn-primary" style="margin-top:0">Join the waitlist</button>
+    <button class="btn-secondary" onclick="setState({screen:'home'})">Back to free features</button>`;
+}
+
+// ─── Main render ──────────────────────────────────────────────────────────────
+function render() {
+  const screens = {
+    loading: renderLoading,
+    auth: renderAuth,
+    profile: renderProfile, home: renderHome,
+    analyse: renderAnalyse, results: renderResults, paywall: renderPaywall,
+    fuel: renderFuel, fuelResults: renderFuelResults,
+    gaps: renderGaps,
+  };
+  const fn = screens[state.screen];
+  document.getElementById('app').innerHTML = fn ? fn() : '';
+  const ta = document.getElementById('meal-text');
+  if (ta && state.mealText) ta.value = state.mealText;
+}
+
+// ─── Event handlers ───────────────────────────────────────────────────────────
+function setSex(sex)   { state.profile.sex  = sex;  render(); }
+function setGoal(goal) { state.profile.goal = goal; render(); }
+function toggleExpand(i) { setState({ expandedIdx: state.expandedIdx === i ? null : i }); }
+function toggleAssumptions() { setState({ assumptionsExpanded: !state.assumptionsExpanded }); }
+
+async function handleAuth() {
+  const email    = state.authEmail.trim();
+  const password = state.authPassword;
+  if (!email || !password) { setState({ authError: 'Please enter your email and password.' }); return; }
+  setState({ authLoading: true, authError: null });
+  try {
+    let result;
+    if (state.authMode === 'login') {
+      result = await sb.auth.signInWithPassword({ email, password });
+    } else {
+      result = await sb.auth.signUp({ email, password });
+    }
+    if (result.error) throw result.error;
+    // onAuthStateChange will handle routing
+  } catch (err) {
+    setState({ authLoading: false, authError: err.message || 'Something went wrong. Please try again.' });
+  }
+}
+
+async function handleSignOut() {
+  await sb.auth.signOut();
+  setState({ user: null, session: null, screen: 'auth' });
+}
+
+async function saveProfile() {
+  const w = parseFloat(document.getElementById('p-weight')?.value);
+  const h = parseFloat(document.getElementById('p-height')?.value);
+  const a = parseInt(document.getElementById('p-age')?.value);
+  if (!w || !h || !a) { alert('Please fill in all fields.'); return; }
+  state.profile.weight = w; state.profile.height = h; state.profile.age = a;
+  localStorage.setItem('wise_profile', JSON.stringify(state.profile));
+  // Sync to Supabase profiles table so profile persists across devices
+  if (state.user) {
+    try {
+      await sb.from('profiles').upsert({
+        id:         state.user.id,
+        weight_kg:  w,
+        height_cm:  h,
+        age:        a,
+        sex:        state.profile.sex,
+        goal:       state.profile.goal,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'id' });
+    } catch(e) {
+      console.warn('Profile sync to Supabase failed:', e?.message || e);
+      // Not fatal — localStorage copy is the fallback
+    }
+  }
+  setState({ screen: 'home' });
+}
+
+function addPhoto(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const urls = [...state.photoDataUrls, ev.target.result].slice(0, 3);
+    setState({ photoDataUrls: urls, analysisError: null });
+  };
+  reader.readAsDataURL(file);
+}
+
+function removePhoto(idx) {
+  setState({ photoDataUrls: state.photoDataUrls.filter((_, i) => i !== idx) });
+}
+
+function startEditIngredient(idx) {
+  const item = state.analysisResult.identified[idx];
+  setState({ editingIdx: idx, expandedIdx: null, editFetching: false });
+  // Pre-fill inputs after render
+  setTimeout(() => {
+    const n = document.getElementById(`edit-name-${idx}`);
+    const g = document.getElementById(`edit-grams-${idx}`);
+    if (n) n.value = item.name;
+    if (g) g.value = item.estimatedG;
+  }, 0);
+}
+
+function cancelEditIngredient() {
+  setState({ editingIdx: null, editFetching: false });
+}
+
+async function saveEditIngredient(idx) {
+  const nameEl  = document.getElementById(`edit-name-${idx}`);
+  const gramsEl = document.getElementById(`edit-grams-${idx}`);
+  const newName  = nameEl?.value?.trim()  || state.analysisResult.identified[idx].name;
+  const newGrams = parseInt(gramsEl?.value) || state.analysisResult.identified[idx].estimatedG;
+  const item = state.analysisResult.identified[idx];
+  const nameChanged = newName.toLowerCase() !== item.name.toLowerCase();
+
+  if (nameChanged) {
+    setState({ editFetching: true });
+    try {
+      const per100data = await fetchPer100(newName);
+      const updated = { ...item, name: newName, estimatedG: newGrams,
+        emoji: per100data.emoji || item.emoji,
+        per100: { cal: per100data.cal||0, protein: per100data.protein||0, fat: per100data.fat||0, carbs: per100data.carbs||0, fibre: per100data.fibre||0 } };
+      const identified = state.analysisResult.identified.map((ing, i) => i === idx ? updated : ing);
+      setState({ editingIdx: null, editFetching: false, analysisResult: { ...state.analysisResult, identified } });
+    } catch(err) {
+      // Fallback: update name/grams, keep existing per100
+      const updated = { ...item, name: newName, estimatedG: newGrams };
+      const identified = state.analysisResult.identified.map((ing, i) => i === idx ? updated : ing);
+      setState({ editingIdx: null, editFetching: false, analysisResult: { ...state.analysisResult, identified } });
+    }
+  } else {
+    const updated = { ...item, estimatedG: newGrams };
+    const identified = state.analysisResult.identified.map((ing, i) => i === idx ? updated : ing);
+    setState({ editingIdx: null, analysisResult: { ...state.analysisResult, identified } });
+  }
+}
+
+function openMealLog(idx) {
+  const log = state.mealLogs[idx];
+  if (!log) return;
+  // Reconstruct the analysisResult shape from the log
+  const result = {
+    identified:     log.meal_data || [],
+    assumptions:    [],
+    confidence:     log.confidence_note || 'Medium',
+    confidenceNote: log.confidence_note || '',
+    summary:        log.summary || '',
+    ambiguous:      false,
+  };
+  setState({
+    viewingLog:     log,
+    analysisResult: result,
+    analyseTab:     log.input_type || 'text',
+    photoDataUrls:  log.photo_data_url ? [log.photo_data_url] : [],
+    mealContext:    log.meal_context || null,
+    restaurantName: log.restaurant_name ? log.restaurant_name.replace(/\s*\(.*\)$/, '') : '',
+    restaurantLocation: log.restaurant_name ? (log.restaurant_name.match(/\(([^)]+)\)$/)?.[1] || '') : '',
+    assumptionsExpanded: false,
+    expandedIdx:    null,
+    editingIdx:     null,
+    screen:         'results',
+  });
+}
+
+function deleteIngredient(idx) {
+  const identified = state.analysisResult.identified.filter((_, i) => i !== idx);
+  setState({ analysisResult: { ...state.analysisResult, identified }, expandedIdx: null, editingIdx: null });
+}
+
+function saveCorrectedIngredients() {
+  const identified = state.analysisResult.identified.map((item, i) => {
+    const nameEl  = document.getElementById(`corr-name-${i}`);
+    const gramsEl = document.getElementById(`corr-grams-${i}`);
+    const newName  = nameEl  ? (nameEl.value.trim()  || item.name)       : item.name;
+    const newGrams = gramsEl ? (parseInt(gramsEl.value) || item.estimatedG) : item.estimatedG;
+    return { ...item, name: newName, estimatedG: newGrams };
+  });
+  setState({
+    analysisResult: { ...state.analysisResult, identified },
+    ingredientsVerified: 'yes',
+    ingredientsExpanded: false,
+    expandedIdx: null,
+    editingIdx: null,
+  });
+}
+
+function deleteCorrIngredient(idx) {
+  // Collect any edits already made before removing the row
+  const identified = state.analysisResult.identified.map((item, i) => {
+    const nameEl  = document.getElementById(`corr-name-${i}`);
+    const gramsEl = document.getElementById(`corr-grams-${i}`);
+    if (!nameEl) return item;
+    return { ...item, name: nameEl.value.trim() || item.name, estimatedG: parseInt(gramsEl?.value) || item.estimatedG };
+  }).filter((_, i) => i !== idx);
+  setState({ analysisResult: { ...state.analysisResult, identified } });
+}
+
+function addCorrIngredient() {
+  // Preserve any edits already in the DOM before appending
+  const identified = state.analysisResult.identified.map((item, i) => {
+    const nameEl  = document.getElementById(`corr-name-${i}`);
+    const gramsEl = document.getElementById(`corr-grams-${i}`);
+    if (!nameEl) return item;
+    return { ...item, name: nameEl.value.trim() || item.name, estimatedG: parseInt(gramsEl?.value) || item.estimatedG };
+  });
+  identified.push({ name: '', emoji: '🍽️', estimatedG: 100, confidence: 'Medium', reasoning: 'Added manually', per100: { cal: 0, protein: 0, fat: 0, carbs: 0, fibre: 0 } });
+  setState({ analysisResult: { ...state.analysisResult, identified } });
+  // Focus the new name input after render
+  setTimeout(() => {
+    const el = document.getElementById(`corr-name-${identified.length - 1}`);
+    if (el) { el.focus(); el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+  }, 50);
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+render(); // show loading spinner immediately
+
+sb.auth.onAuthStateChange(async (event, session) => {
+  if (session) {
+    let profile = JSON.parse(localStorage.getItem('wise_profile') || 'null');
+
+    // If no local profile, try loading from Supabase (e.g. new device / cleared storage)
+    if (!profile) {
+      try {
+        const { data } = await sb.from('profiles').select('*').eq('id', session.user.id).single();
+        if (data && data.weight_kg && data.height_cm && data.age) {
+          profile = { weight: data.weight_kg, height: data.height_cm, age: data.age, sex: data.sex || 'male', goal: data.goal || 'fuel' };
+          localStorage.setItem('wise_profile', JSON.stringify(profile));
+          state.profile = profile;
+        }
+      } catch(e) {
+        console.warn('Could not load profile from Supabase:', e?.message || e);
+      }
+    }
+
+    const nextScreen = profile ? 'home' : 'profile';
+    // Restore the last screen if the tab was backgrounded and reloaded
+    const restoreScreen = savedSession?.screen;
+    const canRestore = savedSession && restoreScreen
+      && !['loading','auth'].includes(restoreScreen)
+      && profile; // can't restore if profile setup isn't done
+    if (canRestore) {
+      Object.assign(state, savedSession);
+      state.user    = session.user;
+      state.session = session;
+      state.authLoading = false;
+      render();
+    } else {
+      setState({ user: session.user, session, authLoading: false, screen: nextScreen });
+    }
+    loadMealLogs();
+  } else {
+    try { localStorage.removeItem('wise_session'); } catch(e) {}
+    setState({ user: null, session: null, authLoading: false, screen: 'auth', mealLogs: [] });
+  }
+});
+</script>
+</body>
+</html>
