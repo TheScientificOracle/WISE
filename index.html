@@ -227,7 +227,7 @@ const state = {
   authPassword: '',
   authError: null,
   authLoading: false,
-  profile: savedProfile || { weight: 75, height: 175, age: 30, sex: 'male', goal: 'fuel' },
+  profile: savedProfile || { weight: 75, height: 175, age: 30, sex: 'male', goal: 'fuel', activityLevel: 'moderate' },
   mealLogs: [],          // recent meals from Supabase
   mealLogsLoading: false,
   viewingLog: null,      // { result, photoDataUrl, analyseTab, mealContext, restaurantName, logged_at }
@@ -250,6 +250,7 @@ const state = {
   ingredientRows: [{name:'',qty:'',unit:'g'},{name:'',qty:'',unit:'g'},{name:'',qty:'',unit:'g'},{name:'',qty:'',unit:'g'}],
   mealSlot: null,              // 'breakfast' | 'lunch' | 'dinner' | 'snack' | null
   photoDescription: '',        // optional one-line hint sent alongside photo
+  gapsExpandedMacro: null,     // 'cal' | 'protein' | 'fat' | 'carbs' | 'fibre' | null — clickable bars
   pwFeature: null,
   assumptionsExpanded: false,
   fuelActivity: 'strength',
@@ -304,9 +305,10 @@ function calcBMR(p) {
   return Math.round(10 * p.weight + 6.25 * p.height - 5 * p.age + (p.sex === 'male' ? 5 : -161));
 }
 function calcTargets(p) {
-  const bmr  = calcBMR(p);
-  const tdee = Math.round(bmr * 1.55);
-  const adj  = p.goal === 'fat' ? Math.round(tdee * 0.85) : p.goal === 'muscle' ? Math.round(tdee * 1.10) : tdee;
+  const bmr     = calcBMR(p);
+  const actMult = { sedentary: 1.2, light: 1.375, moderate: 1.55 }[p.activityLevel] || 1.55;
+  const tdee    = Math.round(bmr * actMult);
+  const adj     = p.goal === 'fat' ? Math.round(tdee * 0.85) : p.goal === 'muscle' ? Math.round(tdee * 1.10) : tdee;
   const protG = Math.round(p.weight * (p.goal === 'fat' ? 2.2 : p.goal === 'muscle' ? 2.0 : p.goal === 'recomp' ? 2.3 : 1.8));
   const fatG  = Math.round((adj * (p.goal === 'fat' ? 0.30 : 0.25)) / 9);
   const carbG = Math.round(Math.max((adj - protG * 4 - fatG * 9) / 4, 50));
@@ -316,13 +318,16 @@ function totalsFrom(items) {
   return items.reduce((a, item) => {
     const m = item.estimatedG / 100, n = item.per100 || {};
     return {
-      cal:     Math.round(a.cal     + (n.cal     || 0) * m),
-      protein: +((a.protein + (n.protein || 0) * m).toFixed(1)),
-      fat:     +((a.fat     + (n.fat     || 0) * m).toFixed(1)),
-      carbs:   +((a.carbs   + (n.carbs   || 0) * m).toFixed(1)),
-      fibre:   +((a.fibre   + (n.fibre   || 0) * m).toFixed(1)),
+      cal:      Math.round(a.cal      + (n.cal      || 0) * m),
+      protein:  +((a.protein  + (n.protein  || 0) * m).toFixed(1)),
+      fat:      +((a.fat      + (n.fat      || 0) * m).toFixed(1)),
+      sat_fat:  +((a.sat_fat  + (n.sat_fat  || 0) * m).toFixed(1)),
+      poly_fat: +((a.poly_fat + (n.poly_fat || 0) * m).toFixed(1)),
+      mono_fat: +((a.mono_fat + (n.mono_fat || 0) * m).toFixed(1)),
+      carbs:    +((a.carbs    + (n.carbs    || 0) * m).toFixed(1)),
+      fibre:    +((a.fibre    + (n.fibre    || 0) * m).toFixed(1)),
     };
-  }, { cal: 0, protein: 0, fat: 0, carbs: 0, fibre: 0 });
+  }, { cal: 0, protein: 0, fat: 0, sat_fat: 0, poly_fat: 0, mono_fat: 0, carbs: 0, fibre: 0 });
 }
 function getGaps(totals, targets) {
   const recs = [];
@@ -377,7 +382,7 @@ async function saveMealLog(result) {
       confidence_note: result.confidenceNote || result.confidence || null,
       summary:         result.summary || null,
       photo_data_url:  photo,
-      totals:          { cal: totals.cal, protein: totals.protein, fat: totals.fat, carbs: totals.carbs, fibre: totals.fibre },
+      totals:          { cal: totals.cal, protein: totals.protein, fat: totals.fat, sat_fat: totals.sat_fat, poly_fat: totals.poly_fat, mono_fat: totals.mono_fat, carbs: totals.carbs, fibre: totals.fibre },
       context:         state.mealSlot ? { slot: state.mealSlot } : null,
     });
     if (error) throw error;
@@ -462,7 +467,7 @@ const SCHEMA = `{
       "estimatedG": 100,
       "confidence": "High | Medium | Low",
       "reasoning": "Specific visual or contextual reasoning for this identification and gram estimate",
-      "per100": { "cal": 0, "protein": 0, "fat": 0, "carbs": 0, "fibre": 0 }
+      "per100": { "cal": 0, "protein": 0, "fat": 0, "sat_fat": 0, "poly_fat": 0, "mono_fat": 0, "carbs": 0, "fibre": 0 }
     }
   ],
   "assumptions": ["Each assumption made, stated plainly"],
@@ -498,14 +503,16 @@ function buildAnalysisPrompt(context) {
   let ctx = '';
   if (context?.type === 'home') {
     ctx = '\nCONTEXT: Home-cooked meal. Use standard home-cooking portion sizes and typical oil/seasoning amounts.';
-  } else if (context?.type === 'restaurant') {
+  } else if (context?.type === 'eating_out' || context?.type === 'restaurant') {
     const namePart = context.name ? ` at "${context.name}"` : '';
     const locPart  = context.location ? ` (${context.location})` : '';
     const ident    = context.name ? `"${context.name}"${locPart}` : null;
     const dataNote = ident
       ? ` If ${ident} is a known chain with published nutritional data, use those figures and explicitly state in the summary and assumptions what data source you used (e.g. "Used ${context.name} published nutritional data" or "No specific data found for ${context.name} — assumed higher fat and sodium typical of eating out"). Location context: ${context.location || 'not specified'} — use this to disambiguate between regional chains (e.g. Nando's UK vs US portion sizes).`
       : '';
-    ctx = `\nCONTEXT: Restaurant meal${namePart}${locPart}.${dataNote} Restaurant meals typically use more oil, butter, and salt — and serve larger portions than home cooking. Adjust estimates accordingly.`;
+    ctx = `\nCONTEXT: Restaurant or café meal${namePart}${locPart}.${dataNote} Eating out typically means more oil, butter, and salt — and larger portions than home cooking. Adjust estimates accordingly.`;
+  } else if (context?.type === 'shop_bought') {
+    ctx = '\nCONTEXT: Shop-bought or packaged food. Use standard manufacturer nutritional data for known branded products where available (supermarket ready meals, branded snacks, etc.). Note in assumptions if you used manufacturer data or estimated from first principles.';
   }
   return BASE_PROMPT + ctx + '\n\nAnalyse this food. Identify every ingredient, estimate gram portions, and return the JSON.';
 }
@@ -594,11 +601,20 @@ async function runAnalysis() {
     setState({ analysisError: 'Please describe your meal before analysing.' });
     return;
   }
+  if (!state.mealSlot) {
+    setState({ analysisError: 'Please select which meal this is — Breakfast, Lunch, Dinner, or Snack.' });
+    return;
+  }
+  if (!state.mealContext) {
+    setState({ analysisError: 'Please select where this meal is from — Home cooked, Eating out, or Shop bought.' });
+    return;
+  }
 
   setState({ analysing: true, analysisError: null, analysisResult: null });
   try {
+    const isEatingOut = state.mealContext === 'eating_out' || state.mealContext === 'restaurant';
     const context = state.mealContext
-      ? { type: state.mealContext, name: state.mealContext === 'restaurant' ? state.restaurantName.trim() : null, location: state.mealContext === 'restaurant' ? state.restaurantLocation.trim() : null }
+      ? { type: state.mealContext, name: isEatingOut ? state.restaurantName.trim() : null, location: isEatingOut ? state.restaurantLocation.trim() : null }
       : null;
     let result;
     if (state.analyseTab === 'photo') {
@@ -680,6 +696,21 @@ async function generateFuelPlan() {
   setState({ fuelPlanning: true, fuelError: null, fuelPlan: null });
   try {
     const targets = calcAdjustedTargets(state.profile, state.fuelActivity, state.fuelEffort);
+
+    // Calculate what has already been consumed today
+    const todayStr  = new Date().toDateString();
+    const todayLogs = state.mealLogs.filter(log => log.logged_at && new Date(log.logged_at).toDateString() === todayStr);
+    const consumed  = todayLogs.reduce((acc, log) => {
+      const t = log.totals || {};
+      return {
+        cal:     Math.round(acc.cal     + (t.cal     || 0)),
+        protein: +((acc.protein + (t.protein || 0)).toFixed(1)),
+        fat:     +((acc.fat     + (t.fat     || 0)).toFixed(1)),
+        carbs:   +((acc.carbs   + (t.carbs   || 0)).toFixed(1)),
+        fibre:   +((acc.fibre   + (t.fibre   || 0)).toFixed(1)),
+      };
+    }, { cal: 0, protein: 0, fat: 0, carbs: 0, fibre: 0 });
+
     const plan = await callFuel({
       profile: { ...state.profile, weight_kg: state.profile.weight, height_cm: state.profile.height },
       targets,
@@ -687,8 +718,10 @@ async function generateFuelPlan() {
       effort: state.fuelEffort,
       when: state.fuelWhen,
       meals: state.fuelMeals,
+      consumed: { ...consumed, mealsLogged: todayLogs.length },
     });
-    plan._targets = targets;
+    plan._targets  = targets;
+    plan._consumed = consumed;
     setState({ fuelPlanning: false, fuelPlan: plan, screen: 'fuelResults' });
   } catch (err) {
     console.error(err);
@@ -736,8 +769,10 @@ function macroTile(label, value, target, color, bg) {
 function renderFuelTargetsBreakdown(t) {
   if (!state.fuelTargetsExpanded) return '';
   const p = state.profile;
-  const bmr = calcBMR(p);
-  const tdee = Math.round(bmr * 1.55);
+  const bmr     = calcBMR(p);
+  const actMult = { sedentary: 1.2, light: 1.375, moderate: 1.55 }[p.activityLevel] || 1.55;
+  const actName = { sedentary: 'sedentary ×1.2', light: 'lightly active ×1.375', moderate: 'moderately active ×1.55' }[p.activityLevel] || 'moderately active ×1.55';
+  const tdee    = Math.round(bmr * actMult);
   const goalAdj = p.goal === 'fat' ? -Math.round(tdee * 0.15) : p.goal === 'muscle' ? Math.round(tdee * 0.10) : 0;
   const goalLabel = p.goal === 'fat' ? 'Fat loss deficit (−15%)' : p.goal === 'muscle' ? 'Muscle gain surplus (+10%)' : p.goal === 'recomp' ? 'Recomp — maintenance calories' : 'Performance — maintenance calories';
   const isRest = state.fuelActivity === 'rest';
@@ -746,7 +781,7 @@ function renderFuelTargetsBreakdown(t) {
   const totalBonus = actBonus + mixedExtra;
   const rows = [
     ['BMR — your body at rest', `${bmr} kcal`, '#374151'],
-    ['Daily activity (×1.55)', `+${tdee - bmr} kcal`, '#6b7280'],
+    [`Daily activity (${actName})`, `+${tdee - bmr} kcal`, '#6b7280'],
     ...(goalAdj !== 0 ? [[goalLabel, `${goalAdj > 0 ? '+' : ''}${goalAdj} kcal`, goalAdj > 0 ? '#16a34a' : '#d97706']] : []),
     ...(totalBonus > 0 ? [[`Today's ${state.fuelEffort} ${state.fuelActivity} session`, `+${totalBonus} kcal`, '#3b82f6']] : []),
   ];
@@ -802,7 +837,7 @@ function renderFuelTargetsBreakdown(t) {
         </div>`).join('')}
     </div>
 
-    <p style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6">Mifflin-St Jeor BMR · ×1.55 moderate active lifestyle · goal and training adjustments applied on top. Adjust your profile if these feel off.</p>
+    <p style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6">Mifflin-St Jeor BMR · ×${actMult} ${actName} · goal and training adjustments applied on top. Adjust your profile if these feel off.</p>
   </div>`;
 }
 
@@ -1008,6 +1043,20 @@ function renderProfile() {
       <div style="font-size:12px;color:var(--muted);background:#f9fafb;border-radius:8px;padding:9px 12px;margin-bottom:16px;line-height:1.5">
         Age and sex feed into your <strong style="color:var(--subtle)">Mifflin-St Jeor BMR</strong> — the calories your body burns at rest. Sex shifts BMR by ~166 kcal/day; age reduces it ~5 kcal/year. Both affect your calorie target and every macro gram derived from it.
       </div>
+      <div class="label" style="margin-bottom:10px">Activity Level</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+        ${[['sedentary','Sedentary','Desk job, minimal exercise outside the gym','×1.2'],
+           ['light','Lightly active','1–3 workouts per week, mostly sedentary otherwise','×1.375'],
+           ['moderate','Moderately active','4–5 sessions/week or an active job','×1.55']
+          ].map(([id,label,desc,mult]) => `
+        <button onclick="setActivityLevel('${id}')" style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:12px;border:1.5px solid ${p.activityLevel===id?'#111':'var(--border)'};background:${p.activityLevel===id?'#111':'white'};cursor:pointer;text-align:left">
+          <div style="flex:1">
+            <div style="font-size:14px;font-weight:500;color:${p.activityLevel===id?'white':'var(--text)'};">${label}</div>
+            <div style="font-size:12px;color:${p.activityLevel===id?'#9ca3af':'var(--muted)'};">${desc}</div>
+          </div>
+          <div style="font-family:monospace;font-size:12px;font-weight:600;color:${p.activityLevel===id?'#9ca3af':'var(--muted)'};">${mult}</div>
+        </button>`).join('')}
+      </div>
       <div class="label" style="margin-bottom:10px">Goal</div>
       ${[['fuel','⚡','Performance','Fuel training, maximise output'],
          ['muscle','💪','Build Muscle','Surplus + protein forward'],
@@ -1023,8 +1072,10 @@ function renderProfile() {
 }
 
 function homeTargetsExplainer(p, targets) {
-  const bmr  = calcBMR(p);
-  const tdee = Math.round(bmr * 1.55);
+  const bmr     = calcBMR(p);
+  const actMult = { sedentary: 1.2, light: 1.375, moderate: 1.55 }[p.activityLevel] || 1.55;
+  const actName = { sedentary: 'sedentary', light: 'lightly active', moderate: 'moderately active' }[p.activityLevel] || 'moderately active';
+  const tdee    = Math.round(bmr * actMult);
   const goalCopy = {
     fuel: {
       headline: "You're fuelling performance.",
@@ -1051,7 +1102,7 @@ function homeTargetsExplainer(p, targets) {
     <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">${copy.headline}</div>
     <div style="font-size:13px;color:var(--subtle);line-height:1.6;margin-bottom:12px">${copy.body}</div>
     <div style="font-size:11px;color:var(--muted);font-family:monospace;background:#f9fafb;border-radius:8px;padding:10px 12px;line-height:1.8">
-      BMR ${bmr} kcal (Mifflin-St Jeor) × 1.55 activity = TDEE ${tdee} kcal<br>
+      BMR ${bmr} kcal (Mifflin-St Jeor) × ${actMult} (${actName}) = TDEE ${tdee} kcal<br>
       Goal adjustment: ${surplus}<br>
       Protein: ${targets.protein}g (${p.goal === 'fat' ? '2.2' : p.goal === 'muscle' ? '2.0' : p.goal === 'recomp' ? '2.3' : '1.8'}g × ${p.weight}kg) · Fat: ${targets.fat}g (${p.goal === 'fat' ? '30' : '25'}% of calories) · Carbs: remainder
     </div>`;
@@ -1085,6 +1136,69 @@ function trackerBar(label, value, target, color, unit) {
       </div>
       <div class="macro-bar-track"><div class="macro-bar-fill" style="width:${pct}%;background:${col}"></div></div>
     </div>`;
+}
+
+// Clickable tracker bar — tapping expands to show top contributing ingredients
+function clickableTrackerBar(macroKey, label, value, target, color, unit, contributors) {
+  unit = unit || 'g';
+  const pct     = Math.min((value / target) * 100, 100);
+  const col     = value > target * 1.05 ? '#dc2626' : color;
+  const isOpen  = state.gapsExpandedMacro === macroKey;
+  const topContribs = contributors.slice(0, 5);
+  return `
+    <div style="margin-bottom:14px">
+      <button onclick="setState({gapsExpandedMacro:state.gapsExpandedMacro==='${macroKey}'?null:'${macroKey}'})"
+        style="width:100%;background:none;border:none;padding:0;cursor:pointer;text-align:left">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+          <span class="mono" style="color:var(--subtle);font-size:12px;text-transform:uppercase;letter-spacing:.08em">${label}</span>
+          <span class="mono" style="font-size:13px">
+            <span style="color:${col};font-weight:700">${value}${unit}</span>
+            <span style="color:#d1d5db"> / ${target}${unit}</span>
+            <span style="color:var(--muted);font-size:10px;margin-left:6px">${isOpen?'▲':'▼'}</span>
+          </span>
+        </div>
+        <div class="macro-bar-track"><div class="macro-bar-fill" style="width:${pct}%;background:${col}"></div></div>
+      </button>
+      ${isOpen ? `
+      <div style="margin-top:8px;background:#f9fafb;border-radius:10px;padding:10px 12px">
+        ${topContribs.length === 0
+          ? `<div style="font-size:12px;color:var(--muted);font-style:italic">No meal data logged yet.</div>`
+          : topContribs.map((c, i) => {
+              const barW = Math.round((c.val / (topContribs[0]?.val || 1)) * 100);
+              return `
+              <div style="${i < topContribs.length - 1 ? 'margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border)' : ''}">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px">
+                  <span style="font-size:12px;color:#374151;font-weight:500">${c.name}</span>
+                  <span style="font-size:12px;font-family:monospace;color:${col};font-weight:700">${c.val}${unit}</span>
+                </div>
+                <div style="height:3px;background:#e5e7eb;border-radius:99px">
+                  <div style="height:100%;width:${barW}%;background:${col};border-radius:99px;opacity:0.6"></div>
+                </div>
+              </div>`;
+            }).join('')}
+      </div>` : ''}
+    </div>`;
+}
+
+// Returns top contributors for a given macro key from today's meal logs
+function getMacroContributors(todayLogs, macroKey) {
+  const items = [];
+  todayLogs.forEach(log => {
+    (log.meal_data || []).forEach(item => {
+      const m   = (item.estimatedG || 0) / 100;
+      const raw = (item.per100?.[macroKey] || 0) * m;
+      if (raw > 0.05) {
+        items.push({ name: item.name, val: +raw.toFixed(1) });
+      }
+    });
+  });
+  // Merge duplicates (same ingredient in multiple meals)
+  const merged = {};
+  items.forEach(({ name, val }) => {
+    const key = name.toLowerCase();
+    merged[key] = { name, val: +((merged[key]?.val || 0) + val).toFixed(1) };
+  });
+  return Object.values(merged).sort((a, b) => b.val - a.val);
 }
 
 function renderRecentMeals() {
@@ -1264,31 +1378,36 @@ function contextToggleHTML() {
   const slotBtn = (id, label, emoji) => {
     const sel = s === id;
     const col = slotColors[id] || '#111';
-    return `<button onclick="setState({mealSlot:state.mealSlot==='${id}'?null:'${id}'})" style="flex:1;padding:10px 4px 8px;border-radius:12px;border:${sel?`2px solid ${col}`:'1.5px solid var(--border)'};background:${sel?col+'18':'white'};color:${sel?col:'var(--subtle)'};font-size:12px;font-weight:${sel?'700':'500'};cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;position:relative;transition:all .15s">
+    return `<button onclick="setState({mealSlot:'${id}'})" style="flex:1;padding:10px 4px 8px;border-radius:12px;border:${sel?`2px solid ${col}`:'1.5px solid var(--border)'};background:${sel?col+'18':'white'};color:${sel?col:'var(--subtle)'};font-size:12px;font-weight:${sel?'700':'500'};cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;position:relative;transition:all .15s">
       ${sel?`<span style="position:absolute;top:4px;right:6px;font-size:9px;color:${col};font-weight:800">✓</span>`:''}
       <span style="font-size:16px">${emoji}</span><span>${label}</span>
     </button>`;
   };
+  const ctxBtn = (id, label, emoji) => {
+    const sel = c === id;
+    return `<button onclick="setState({mealContext:'${id}'})" style="flex:1;padding:10px 6px;border-radius:10px;border:1px solid ${sel?'#111':'var(--border)'};background:${sel?'#111':'white'};color:${sel?'white':'var(--subtle)'};font-size:13px;font-weight:500;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px">${emoji}<span style="font-size:11px;line-height:1.3">${label}</span></button>`;
+  };
   return `
     <div style="margin-bottom:14px">
-      <div class="label" style="margin-bottom:8px">Meal <span style="font-weight:400;font-style:italic;text-transform:none;letter-spacing:0">(optional — improves accuracy)</span></div>
-
       <!-- Slot: which meal of the day is this? -->
-      <div style="display:flex;gap:6px;margin-bottom:10px">
+      <div class="label" style="margin-bottom:8px">Which meal?</div>
+      <div style="display:flex;gap:6px;margin-bottom:14px">
         ${slotBtn('breakfast','Breakfast','🌅')}
         ${slotBtn('lunch','Lunch','☀️')}
         ${slotBtn('dinner','Dinner','🌙')}
         ${slotBtn('snack','Snack','🍎')}
       </div>
 
-      <!-- Context: home or restaurant? -->
-      <div style="display:flex;gap:8px">
-        <button onclick="setState({mealContext:state.mealContext==='home'?null:'home'})" style="flex:1;padding:10px;border-radius:10px;border:1px solid ${c==='home'?'#111':'var(--border)'};background:${c==='home'?'#111':'white'};color:${c==='home'?'white':'var(--subtle)'};font-size:13px;font-weight:500;cursor:pointer">🏠 Home cooked</button>
-        <button onclick="setState({mealContext:state.mealContext==='restaurant'?null:'restaurant'})" style="flex:1;padding:10px;border-radius:10px;border:1px solid ${c==='restaurant'?'#111':'var(--border)'};background:${c==='restaurant'?'#111':'white'};color:${c==='restaurant'?'white':'var(--subtle)'};font-size:13px;font-weight:500;cursor:pointer">🍴 Restaurant</button>
+      <!-- Context: where is this from? -->
+      <div class="label" style="margin-bottom:8px">Where is it from?</div>
+      <div style="display:flex;gap:8px;margin-bottom:${c === 'eating_out' || c === 'shop_bought' ? '8px' : '0'}">
+        ${ctxBtn('home','Home cooked','🏠')}
+        ${ctxBtn('eating_out','Eating out','🍴')}
+        ${ctxBtn('shop_bought','Shop bought','🛒')}
       </div>
-      ${c === 'restaurant' ? `
+      ${c === 'eating_out' ? `
       <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
-        <input type="text" placeholder="Restaurant name (optional) e.g. Nando's, Din Tai Fung"
+        <input type="text" placeholder="Place name (optional) — e.g. Nando's, Pret, local café"
           value="${state.restaurantName}"
           oninput="state.restaurantName=this.value"
           style="width:100%;border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-size:14px;outline:none;font-family:inherit">
@@ -1296,7 +1415,11 @@ function contextToggleHTML() {
           value="${state.restaurantLocation}"
           oninput="state.restaurantLocation=this.value"
           style="width:100%;border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-size:14px;outline:none;font-family:inherit">
-        <div style="font-size:12px;color:var(--muted);line-height:1.4">Helps us tell apart regional chains — e.g. Nando's UK vs US have different portion sizes</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.4">Helps tell apart regional chains — e.g. Nando's UK vs US have different portion sizes</div>
+      </div>` : ''}
+      ${c === 'shop_bought' ? `
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px 14px;margin-top:2px;font-size:13px;color:#166534;line-height:1.5">
+        📷 Have the packaging? You can upload a photo of the nutrition label for exact values — much more accurate than any estimate.
       </div>` : ''}
     </div>`;
 }
@@ -1307,16 +1430,13 @@ function photoTabContent() {
   const canAddMore = photos.length < 3;
 
   if (!hasPhotos) {
+    const canAnalyse = state.mealSlot && state.mealContext;
     return `
-      <div class="info-box">
-        <span style="flex-shrink:0">📷</span>
-        <span>Upload up to 3 photos for better accuracy — e.g. top-down view + cross-section to show layers or sauces.</span>
-      </div>
       ${contextToggleHTML()}
       <label class="upload-zone" for="photo-input">
         <div style="font-size:40px">📷</div>
         <div style="font-size:15px;font-weight:500;color:#374151">Upload a photo of your meal</div>
-        <div style="font-size:13px;color:var(--muted)">JPG, PNG, HEIC — up to 3 photos</div>
+        <div style="font-size:13px;color:var(--muted)">JPG, PNG, HEIC — up to 3 for better accuracy</div>
       </label>
       <input type="file" id="photo-input" accept="image/*" style="display:none" onchange="addPhoto(event)">
       <div style="text-align:center;font-size:12px;color:var(--muted);margin-top:4px;margin-bottom:14px">
@@ -1332,6 +1452,7 @@ function photoTabContent() {
       </div>`;
   }
 
+  const canAnalyse = state.mealSlot && state.mealContext;
   return `
     ${contextToggleHTML()}
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
@@ -1349,7 +1470,7 @@ function photoTabContent() {
 
     <!-- One-sentence description to help WISE get it right faster -->
     <div style="margin-bottom:12px">
-      <div class="label" style="margin-bottom:6px">Describe this meal in one sentence <span style="font-weight:400;font-style:italic;text-transform:none;letter-spacing:0">(optional — improves accuracy)</span></div>
+      <div class="label" style="margin-bottom:6px">Add a description <span style="font-weight:400;font-style:italic;text-transform:none;letter-spacing:0">(optional — helps WISE identify ingredients)</span></div>
       <textarea id="photo-desc" placeholder="e.g. Homemade stir-fry with chicken and mixed veg · Tacos from a local street food cart · Soup and sandwich from Starbucks · Lasagna from my office canteen"
         style="width:100%;border:1px solid var(--border);border-radius:12px;padding:12px 14px;font-size:14px;outline:none;font-family:inherit;min-height:72px;resize:none;line-height:1.5;color:var(--text)"
         oninput="state.photoDescription=this.value">${state.photoDescription}</textarea>
@@ -1357,8 +1478,9 @@ function photoTabContent() {
 
     <div style="display:flex;gap:10px">
       <button onclick="setState({photoDataUrls:[],photoDescription:''})" style="flex:1;padding:12px;border-radius:12px;border:1px solid var(--border);background:white;font-size:14px;color:var(--subtle);cursor:pointer">Clear</button>
-      <button onclick="runAnalysis()" style="flex:2;padding:12px;border-radius:12px;border:none;background:#111;color:white;font-size:14px;font-weight:600;cursor:pointer">Analyse ${photos.length > 1 ? photos.length + ' photos' : 'this meal'} →</button>
+      <button onclick="runAnalysis()" ${canAnalyse?'':'disabled'} style="flex:2;padding:12px;border-radius:12px;border:none;background:${canAnalyse?'#111':'#f3f4f6'};color:${canAnalyse?'white':'var(--muted)'};font-size:14px;font-weight:600;cursor:${canAnalyse?'pointer':'default'}">Analyse ${photos.length > 1 ? photos.length + ' photos' : 'this meal'} →</button>
     </div>
+    ${!canAnalyse ? `<div style="text-align:center;font-size:12px;color:var(--muted);margin-top:8px">Select a meal slot and where it's from above to analyse</div>` : ''}
     <div class="warning" style="margin-top:12px">
       <div class="warning-icon">⚠️</div>
       <div>
@@ -1369,19 +1491,17 @@ function photoTabContent() {
 }
 
 function textTabContent() {
+  const canAnalyse = state.mealSlot && state.mealContext;
   return `
-    <div class="info-box">
-      <span style="flex-shrink:0">✏️</span>
-      <span>Describe your meal in plain English. WISE will identify each ingredient, estimate portions, and calculate nutrition.</span>
-    </div>
     ${contextToggleHTML()}
     <textarea id="meal-text" placeholder="e.g. a yogurt bowl with blueberries, granola, banana, walnuts, honey and chia seeds"
       style="width:100%;border:1px solid var(--border);border-radius:12px;padding:14px 16px;font-size:15px;outline:none;font-family:inherit;min-height:110px;resize:vertical;line-height:1.6;margin-bottom:4px"
       onchange="state.mealText=this.value" oninput="state.mealText=this.value">${state.mealText}</textarea>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:4px">
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px">
       <strong style="color:#374151">More detail = more accurate.</strong> "150g chicken breast, 1 cup cooked rice, handful of broccoli" beats "chicken and rice". Include amounts, cooking method, and any sauces or toppings.
     </div>
-    <button class="btn-primary" onclick="runAnalysis()">Analyse this meal →</button>`;
+    <button class="btn-primary" onclick="runAnalysis()" ${canAnalyse?'':'disabled'}>Analyse this meal →</button>
+    ${!canAnalyse ? `<div style="text-align:center;font-size:12px;color:var(--muted);margin-top:8px">Select a meal slot and where it's from above to analyse</div>` : ''}`;
 }
 
 function getIngredientRowsFromDOM() {
@@ -1743,12 +1863,21 @@ function renderResults() {
       <div style="font-size:10px;color:var(--muted);font-family:monospace;text-transform:uppercase;letter-spacing:.06em">Target ${targets.cal} kcal/day</div>
     </div>`;
     })()}
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px">
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px">
       ${macroTile('Protein', totals.protein, targets.protein, 'var(--protein)', 'var(--protein-bg)')}
       ${macroTile('Carbs',   totals.carbs,   targets.carbs,   'var(--carbs)',   'var(--carbs-bg)')}
       ${macroTile('Fat',     totals.fat,     targets.fat,     'var(--fat)',     'var(--fat-bg)')}
       ${macroTile('Fibre',   totals.fibre,   targets.fibre,   'var(--fibre)',   'var(--fibre-bg)')}
     </div>
+    ${totals.sat_fat > 0 || totals.poly_fat > 0 || totals.mono_fat > 0 ? `
+    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 14px;margin-bottom:12px">
+      <div class="mono" style="font-size:10px;color:var(--muted);letter-spacing:.08em;margin-bottom:8px">FAT BREAKDOWN</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${totals.sat_fat > 0 ? `<div style="font-size:12px"><span style="font-weight:700;color:#dc2626;font-family:monospace">${totals.sat_fat}g</span> <span style="color:#6b7280">Saturated <span style="font-size:10px;color:#dc2626">(limit)</span></span></div>` : ''}
+        ${totals.mono_fat > 0 ? `<div style="font-size:12px"><span style="font-weight:700;color:#16a34a;font-family:monospace">${totals.mono_fat}g</span> <span style="color:#6b7280">Monounsaturated</span></div>` : ''}
+        ${totals.poly_fat > 0 ? `<div style="font-size:12px"><span style="font-weight:700;color:#0284c7;font-family:monospace">${totals.poly_fat}g</span> <span style="color:#6b7280">Polyunsaturated</span></div>` : ''}
+      </div>
+    </div>` : ''}
 
     <!-- Gap analysis -->
     <div class="card" style="margin-bottom:12px">
@@ -1878,6 +2007,20 @@ function renderFuel() {
       <p style="font-size:13px;color:var(--muted);margin-top:12px;font-style:italic">Rest day plan: balanced macros across 3–4 meals, moderate carbs, high protein.</p>`}
     </div>
 
+    ${(() => {
+      const todayStr  = new Date().toDateString();
+      const todayLogs = state.mealLogs.filter(log => log.logged_at && new Date(log.logged_at).toDateString() === todayStr);
+      if (todayLogs.length === 0) return '';
+      const consumed = todayLogs.reduce((acc, log) => {
+        const t = log.totals || {};
+        return { cal: Math.round(acc.cal + (t.cal||0)), protein: +((acc.protein+(t.protein||0)).toFixed(1)) };
+      }, { cal: 0, protein: 0 });
+      return `
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:14px;padding:14px 16px;margin-bottom:4px">
+        <div style="font-size:13px;font-weight:600;color:#166534;margin-bottom:4px">📊 ${todayLogs.length} meal${todayLogs.length>1?'s':''} already logged today</div>
+        <div style="font-size:12px;color:#15803d;line-height:1.5">${consumed.cal} kcal · ${consumed.protein}g protein consumed so far — WISE will plan your remaining meals around what's left.</div>
+      </div>`;
+    })()}
     <button class="btn-primary" onclick="generateFuelPlan()">Generate my fuel plan →</button>`;
 }
 
@@ -1905,6 +2048,19 @@ function renderFuelResults() {
       <div class="mono" style="font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px">⚡ Fuel Plan · ${state.fuelActivity === 'rest' ? 'Rest Day' : state.fuelEffort + ' ' + state.fuelActivity}</div>
       <h2 style="font-size:24px;font-weight:600;letter-spacing:-.03em;line-height:1.2">${plan.dayType || "Today's Fuel Plan"}</h2>
     </div>
+
+    ${plan._consumed && plan._consumed.cal > 0 ? `
+    <div style="background:#f9fafb;border:1px solid var(--border);border-radius:14px;padding:12px 16px;margin-bottom:10px">
+      <div style="font-size:11px;font-family:monospace;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Already eaten today</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${[['kcal', plan._consumed.cal, '#374151'], ['Protein', plan._consumed.protein+'g', 'var(--protein)'], ['Carbs', plan._consumed.carbs+'g', 'var(--carbs)'], ['Fat', plan._consumed.fat+'g', 'var(--fat)']].map(([lbl,val,col])=>`
+        <div style="font-size:12px;padding:4px 10px;border-radius:99px;background:white;border:1px solid var(--border)">
+          <span style="font-weight:600;color:${col};font-family:monospace">${val}</span>
+          <span style="color:var(--muted);margin-left:3px">${lbl}</span>
+        </div>`).join('')}
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:8px">The plan below accounts for these — covering your remaining targets for the day.</div>
+    </div>` : ''}
 
     <!-- Daily targets strip -->
     <div class="card" style="margin-bottom:4px">
@@ -1986,13 +2142,16 @@ function renderGaps() {
   const running = todayLogs.reduce((acc, log) => {
     const t = log.totals || {};
     return {
-      cal:     Math.round(acc.cal     + (t.cal     || 0)),
-      protein: +((acc.protein + (t.protein || 0)).toFixed(1)),
-      fat:     +((acc.fat     + (t.fat     || 0)).toFixed(1)),
-      carbs:   +((acc.carbs   + (t.carbs   || 0)).toFixed(1)),
-      fibre:   +((acc.fibre   + (t.fibre   || 0)).toFixed(1)),
+      cal:      Math.round(acc.cal      + (t.cal      || 0)),
+      protein:  +((acc.protein  + (t.protein  || 0)).toFixed(1)),
+      fat:      +((acc.fat      + (t.fat      || 0)).toFixed(1)),
+      sat_fat:  +((acc.sat_fat  + (t.sat_fat  || 0)).toFixed(1)),
+      poly_fat: +((acc.poly_fat + (t.poly_fat || 0)).toFixed(1)),
+      mono_fat: +((acc.mono_fat + (t.mono_fat || 0)).toFixed(1)),
+      carbs:    +((acc.carbs    + (t.carbs    || 0)).toFixed(1)),
+      fibre:    +((acc.fibre    + (t.fibre    || 0)).toFixed(1)),
     };
-  }, { cal: 0, protein: 0, fat: 0, carbs: 0, fibre: 0 });
+  }, { cal: 0, protein: 0, fat: 0, sat_fat: 0, poly_fat: 0, mono_fat: 0, carbs: 0, fibre: 0 });
 
   const gaps   = getGaps(running, targets);
   const calPct = targets.cal > 0 ? Math.round(running.cal / targets.cal * 100) : 0;
@@ -2014,11 +2173,23 @@ function renderGaps() {
         <div class="label" style="margin-bottom:0">Today so far</div>
         <div class="mono" style="font-size:11px;color:${calPct > 105 ? '#dc2626' : calPct > 80 ? '#d97706' : 'var(--muted)'}">${calPct}% of target · ${goal}</div>
       </div>
-      ${trackerBar('Calories', running.cal,     targets.cal,     '#374151',       ' kcal')}
-      ${trackerBar('Protein',  running.protein, targets.protein, 'var(--protein)')}
-      ${trackerBar('Carbs',    running.carbs,   targets.carbs,   'var(--carbs)')}
-      ${trackerBar('Fat',      running.fat,      targets.fat,    'var(--fat)')}
-      ${trackerBar('Fibre',    running.fibre,   targets.fibre,   'var(--fibre)')}
+      ${clickableTrackerBar('cal',     'Calories', running.cal,     targets.cal,     '#374151',       ' kcal', getMacroContributors(todayLogs, 'cal'))}
+      ${clickableTrackerBar('protein', 'Protein',  running.protein, targets.protein, 'var(--protein)', 'g',     getMacroContributors(todayLogs, 'protein'))}
+      ${clickableTrackerBar('carbs',   'Carbs',    running.carbs,   targets.carbs,   'var(--carbs)',   'g',     getMacroContributors(todayLogs, 'carbs'))}
+      ${clickableTrackerBar('fat',     'Fat',      running.fat,     targets.fat,     'var(--fat)',     'g',     getMacroContributors(todayLogs, 'fat'))}
+      ${state.gapsExpandedMacro === 'fat' && (running.sat_fat > 0 || running.poly_fat > 0 || running.mono_fat > 0) ? `
+      <div style="margin-top:-8px;margin-bottom:14px;padding:10px 14px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px">
+        <div class="mono" style="font-size:10px;color:var(--muted);letter-spacing:.08em;margin-bottom:8px">FAT BREAKDOWN</div>
+        ${[['Saturated', running.sat_fat, '#dc2626'], ['Monounsaturated', running.mono_fat, '#16a34a'], ['Polyunsaturated', running.poly_fat, '#0284c7']].map(([lbl, val, col]) => val > 0 ? `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+          <div>
+            <span style="font-size:12px;color:#374151">${lbl}</span>
+            ${lbl === 'Saturated' ? `<span style="font-size:10px;color:#dc2626;margin-left:4px">· limit</span>` : `<span style="font-size:10px;color:#16a34a;margin-left:4px">· healthy</span>`}
+          </div>
+          <span style="font-size:13px;font-weight:700;font-family:monospace;color:${col}">${val}g</span>
+        </div>` : '').join('')}
+      </div>` : ''}
+      ${clickableTrackerBar('fibre',   'Fibre',    running.fibre,   targets.fibre,   'var(--fibre)',   'g',     getMacroContributors(todayLogs, 'fibre'))}
     </div>
 
     <!-- Gap recommendations -->
@@ -2174,8 +2345,9 @@ function render() {
 }
 
 // ─── Event handlers ───────────────────────────────────────────────────────────
-function setSex(sex)   { state.profile.sex  = sex;  render(); }
-function setGoal(goal) { state.profile.goal = goal; render(); }
+function setSex(sex)           { state.profile.sex           = sex;   render(); }
+function setGoal(goal)         { state.profile.goal          = goal;  render(); }
+function setActivityLevel(lvl) { state.profile.activityLevel = lvl;   render(); }
 function toggleExpand(i) { setState({ expandedIdx: state.expandedIdx === i ? null : i }); }
 function toggleAssumptions() { setState({ assumptionsExpanded: !state.assumptionsExpanded }); }
 
@@ -2208,6 +2380,7 @@ async function saveProfile() {
   const h = parseFloat(document.getElementById('p-height')?.value);
   const a = parseInt(document.getElementById('p-age')?.value);
   if (!w || !h || !a) { alert('Please fill in all fields.'); return; }
+  // activityLevel and sex/goal are already set directly on state.profile via their buttons
   state.profile.weight = w; state.profile.height = h; state.profile.age = a;
   localStorage.setItem('wise_profile', JSON.stringify(state.profile));
   // Sync to Supabase profiles table so profile persists across devices
