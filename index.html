@@ -721,6 +721,9 @@ async function generateFuelPlan() {
       };
     }, { cal: 0, protein: 0, fat: 0, carbs: 0, fibre: 0 });
 
+    // Extract which meal slots have already been logged today
+    const loggedSlots = [...new Set(todayLogs.map(l => l.context?.slot).filter(Boolean))];
+
     const plan = await callFuel({
       profile: { ...state.profile, weight_kg: state.profile.weight, height_cm: state.profile.height },
       targets,
@@ -728,7 +731,7 @@ async function generateFuelPlan() {
       effort: state.fuelEffort,
       when: state.fuelWhen,
       meals: state.fuelMeals,
-      consumed: { ...consumed, mealsLogged: todayLogs.length },
+      consumed: { ...consumed, mealsLogged: todayLogs.length, loggedSlots },
     });
     plan._targets  = targets;
     plan._consumed = consumed;
