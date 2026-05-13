@@ -1568,14 +1568,16 @@ function renderRecentMeals() {
       </div>`;
     }).join('');
 
+    const logForDate = `setState({screen:'analyse',analyseTab:'photo',photoDataUrls:[],mealText:'',mealContext:null,restaurantName:'',restaurantLocation:'',mealSlot:null,mealDate:'${key}',photoDescription:'',analysisResult:null,analysisError:null,analysing:false,viewingLog:null,mealSaveError:null})`;
     return `<div style="margin-bottom:4px">
-      <button onclick="var el=document.getElementById('${listId}'),o=el.style.display!=='none';el.style.display=o?'none':'';this.querySelector('.chev').textContent=o?'▼':'▲'" style="width:100%;display:flex;justify-content:space-between;align-items:center;background:none;border:none;border-bottom:1px solid var(--border);padding:8px 2px 8px;margin-bottom:8px;cursor:pointer;text-align:left">
-        <div style="display:flex;align-items:center;gap:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);padding:8px 2px;margin-bottom:8px">
+        <button onclick="var el=document.getElementById('${listId}'),o=el.style.display!=='none';el.style.display=o?'none':'';this.querySelector('.chev').textContent=o?'▼':'▲'" style="flex:1;display:flex;align-items:center;gap:8px;background:none;border:none;cursor:pointer;text-align:left;padding:0">
           <span style="font-size:11px;font-family:'SF Mono',monospace;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);">${label}</span>
           ${isIncomplete ? `<span style="font-size:9px;font-family:monospace;font-weight:700;padding:2px 6px;border-radius:99px;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;letter-spacing:.04em">INCOMPLETE</span>` : ''}
-        </div>
-        <span class="chev" style="font-size:9px;color:var(--muted)">▼</span>
-      </button>
+          <span class="chev" style="font-size:9px;color:var(--muted)">▼</span>
+        </button>
+        ${isIncomplete ? `<button onclick="${logForDate}" style="font-size:11px;font-family:monospace;font-weight:600;padding:3px 10px;border-radius:99px;background:#111;color:white;border:none;cursor:pointer;flex-shrink:0">+ Log meal</button>` : ''}
+      </div>
       <div id="${listId}" style="display:none">${mealsHTML}</div>
     </div>`;
   }).join('');
@@ -1686,15 +1688,18 @@ function renderHome() {
     const name = extractShortMealName(log.summary) || 'Meal';
     const slot = log.context?.slot;
     return `
-      <button onclick="openMealLog(${idx})" style="display:flex;align-items:center;gap:12px;padding:10px 0;border:none;background:none;width:100%;text-align:left;cursor:pointer;border-bottom:1px solid #f9fafb">
-        ${log.photo_data_url
-          ? `<img src="${log.photo_data_url}" style="width:36px;height:36px;border-radius:8px;object-fit:cover;flex-shrink:0">`
-          : `<div style="width:36px;height:36px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${SLOT_EMOJI[slot]||'🍽️'}</div>`}
-        <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</div>
-        </div>
-        <div style="font-size:12px;font-family:monospace;color:var(--subtle);flex-shrink:0">${log.totals?.cal||0} kcal</div>
-      </button>`;
+      <div style="display:flex;align-items:stretch;border-bottom:1px solid #f9fafb">
+        <button onclick="openMealLog(${idx})" style="flex:1;display:flex;align-items:center;gap:12px;padding:10px 0;border:none;background:none;text-align:left;cursor:pointer;min-width:0">
+          ${log.photo_data_url
+            ? `<img src="${log.photo_data_url}" style="width:36px;height:36px;border-radius:8px;object-fit:cover;flex-shrink:0">`
+            : `<div style="width:36px;height:36px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${SLOT_EMOJI[slot]||'🍽️'}</div>`}
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</div>
+          </div>
+          <div style="font-size:12px;font-family:monospace;color:var(--subtle);flex-shrink:0">${log.totals?.cal||0} kcal</div>
+        </button>
+        <button onclick="deleteMealLog('${log.id}')" style="padding:0 12px;background:none;border:none;border-left:1px solid #f3f4f6;color:#d1d5db;cursor:pointer;font-size:18px;flex-shrink:0;line-height:1" title="Delete meal">×</button>
+      </div>`;
   }).join('');
 
   // Unlogged slot placeholders
