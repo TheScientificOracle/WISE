@@ -1577,17 +1577,32 @@ function renderRecentMeals() {
       </div>`;
     }).join('');
 
-    const logForDate = `setState({screen:'analyse',analyseTab:'photo',photoDataUrls:[],mealText:'',mealContext:null,restaurantName:'',restaurantLocation:'',mealSlot:null,mealDate:'${key}',photoDescription:'',analysisResult:null,analysisError:null,analysing:false,viewingLog:null,mealSaveError:null})`;
+    // For incomplete past days, show "Add now" placeholders for missing major slots
+    const HIST_SLOT_EMOJI = { breakfast:'🌅', lunch:'☀️', dinner:'🌙' };
+    const loggedDaySlots = new Set(logs.map(({ log }) => log.context?.slot).filter(Boolean));
+    const missingSlotHTML = isIncomplete
+      ? ['breakfast','lunch','dinner'].filter(s => !loggedDaySlots.has(s)).map(slot => {
+          const addAction = `setState({screen:'analyse',analyseTab:'photo',photoDataUrls:[],mealText:'',mealContext:null,restaurantName:'',restaurantLocation:'',mealSlot:'${slot}',mealDate:'${key}',photoDescription:'',analysisResult:null,analysisError:null,analysing:false,viewingLog:null,mealSaveError:null})`;
+          return `<div style="display:flex;align-items:stretch;background:white;border:1px dashed #d1d5db;border-radius:14px;margin-bottom:8px;overflow:hidden">
+            <div style="flex:1;display:flex;align-items:center;gap:12px;padding:12px 14px;min-width:0">
+              <div style="width:48px;height:48px;border-radius:8px;background:#f9fafb;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;opacity:.5">${HIST_SLOT_EMOJI[slot]}</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:500;color:var(--muted);text-transform:capitalize;margin-bottom:2px">${slot}</div>
+                <div style="font-size:11px;font-family:monospace;color:#d1d5db">not logged</div>
+              </div>
+              <button onclick="${addAction}" style="font-size:11px;font-family:monospace;font-weight:600;padding:6px 14px;border-radius:99px;background:#111;color:white;border:none;cursor:pointer;flex-shrink:0">Add now</button>
+            </div>
+          </div>`;
+        }).join('')
+      : '';
+
     return `<div style="margin-bottom:4px">
-      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);padding:8px 2px;margin-bottom:8px">
-        <button onclick="var el=document.getElementById('${listId}'),o=el.style.display!=='none';el.style.display=o?'none':'';this.querySelector('.chev').textContent=o?'▼':'▲'" style="flex:1;display:flex;align-items:center;gap:8px;background:none;border:none;cursor:pointer;text-align:left;padding:0">
-          <span style="font-size:11px;font-family:'SF Mono',monospace;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);">${label}</span>
-          ${isIncomplete ? `<span style="font-size:9px;font-family:monospace;font-weight:700;padding:2px 6px;border-radius:99px;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;letter-spacing:.04em">INCOMPLETE</span>` : ''}
-          <span class="chev" style="font-size:9px;color:var(--muted)">▼</span>
-        </button>
-        ${isIncomplete ? `<button onclick="${logForDate}" style="font-size:11px;font-family:monospace;font-weight:600;padding:3px 10px;border-radius:99px;background:#111;color:white;border:none;cursor:pointer;flex-shrink:0">+ Log meal</button>` : ''}
-      </div>
-      <div id="${listId}" style="display:none">${mealsHTML}</div>
+      <button onclick="var el=document.getElementById('${listId}'),o=el.style.display!=='none';el.style.display=o?'none':'';this.querySelector('.chev').textContent=o?'▼':'▲'" style="width:100%;display:flex;align-items:center;gap:8px;background:none;border:none;border-bottom:1px solid var(--border);padding:8px 2px;margin-bottom:8px;cursor:pointer;text-align:left">
+        <span style="font-size:11px;font-family:'SF Mono',monospace;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);">${label}</span>
+        ${isIncomplete ? `<span style="font-size:9px;font-family:monospace;font-weight:700;padding:2px 6px;border-radius:99px;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;letter-spacing:.04em">INCOMPLETE</span>` : ''}
+        <span class="chev" style="font-size:9px;color:var(--muted);margin-left:auto">▼</span>
+      </button>
+      <div id="${listId}" style="display:none">${mealsHTML}${missingSlotHTML}</div>
     </div>`;
   }).join('');
 
@@ -1689,37 +1704,58 @@ function renderHome() {
   const SLOT_EMOJI = { breakfast:'🌅', lunch:'☀️', dinner:'🌙', snack:'🍎' };
   const loggedSlots = new Set(todayLogs.map(l => l.context?.slot).filter(Boolean));
   const nowHour = new Date().getHours();
+  const todayKey = new Date().toISOString().split('T')[0];
 
-  // Build meal rows (sorted by time)
+  // Helper: open analyse screen with slot + date pre-filled
+  function logAction(slot, dateKey) {
+    const s = slot ? `'${slot}'` : 'null';
+    return `setState({screen:'analyse',analyseTab:'photo',photoDataUrls:[],mealText:'',mealContext:null,restaurantName:'',restaurantLocation:'',mealSlot:${s},mealDate:'${dateKey}',photoDescription:'',analysisResult:null,analysisError:null,analysing:false,viewingLog:null,mealSaveError:null})`;
+  }
+
+  // Build meal rows — same card style as history
   const sortedLogs = [...todayLogs].sort((a,b) => new Date(a.logged_at) - new Date(b.logged_at));
   const mealRows = sortedLogs.map(log => {
     const idx  = state.mealLogs.indexOf(log);
     const name = extractShortMealName(log.summary) || 'Meal';
     const slot = log.context?.slot;
+    const dt   = new Date(log.logged_at);
+    const timeStr = dt.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+    const slotTag = slot
+      ? `<span style="font-size:10px;font-family:monospace;color:var(--muted);background:#f3f4f6;border-radius:4px;padding:1px 5px;margin-right:4px">${SLOT_EMOJI[slot]} ${slot}</span>`
+      : '';
     return `
-      <div style="display:flex;align-items:stretch;border-bottom:1px solid #f9fafb">
-        <button onclick="openMealLog(${idx})" style="flex:1;display:flex;align-items:center;gap:12px;padding:10px 0;border:none;background:none;text-align:left;cursor:pointer;min-width:0">
+      <div style="display:flex;align-items:stretch;background:white;border:1px solid var(--border);border-radius:14px;margin-bottom:8px;overflow:hidden;box-shadow:var(--shadow)">
+        <button onclick="openMealLog(${idx})" style="flex:1;display:flex;align-items:center;gap:12px;padding:12px 14px;cursor:pointer;text-align:left;background:none;border:none;min-width:0">
           ${log.photo_data_url
-            ? `<img src="${log.photo_data_url}" style="width:36px;height:36px;border-radius:8px;object-fit:cover;flex-shrink:0">`
-            : `<div style="width:36px;height:36px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${SLOT_EMOJI[slot]||'🍽️'}</div>`}
+            ? `<img src="${log.photo_data_url}" style="width:48px;height:48px;border-radius:8px;object-fit:cover;flex-shrink:0">`
+            : `<div style="width:48px;height:48px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${SLOT_EMOJI[slot]||'🍽️'}</div>`}
           <div style="flex:1;min-width:0">
-            <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</div>
+            <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px">${name}</div>
+            <div style="font-size:11px;color:var(--muted);font-family:monospace">${slotTag}${timeStr} · ${log.totals?.cal||0} kcal</div>
           </div>
-          <div style="font-size:12px;font-family:monospace;color:var(--subtle);flex-shrink:0">${log.totals?.cal||0} kcal</div>
+          <span style="color:#d1d5db;font-size:14px;flex-shrink:0;margin-left:4px">→</span>
         </button>
-        <button onclick="deleteMealLog('${log.id}')" style="padding:0 12px;background:none;border:none;border-left:1px solid #f3f4f6;color:#d1d5db;cursor:pointer;font-size:18px;flex-shrink:0;line-height:1" title="Delete meal">×</button>
+        <button onclick="deleteMealLog('${log.id}')" style="padding:0 14px;background:none;border:none;border-left:1px solid var(--border);color:#d1d5db;cursor:pointer;font-size:19px;flex-shrink:0;line-height:1" title="Delete meal">×</button>
       </div>`;
   }).join('');
 
-  // Unlogged slot placeholders
-  const showPlaceholders = ['lunch','dinner'].filter(slot =>
-    !loggedSlots.has(slot) && (slot === 'lunch' ? nowHour >= 11 : nowHour >= 16)
-  );
+  // Unlogged slot placeholders — with "Add now" button
+  const showPlaceholders = ['breakfast','lunch','dinner'].filter(slot => {
+    if (loggedSlots.has(slot)) return false;
+    if (slot === 'breakfast') return nowHour >= 8;
+    if (slot === 'lunch')     return nowHour >= 11;
+    if (slot === 'dinner')    return nowHour >= 16;
+  });
   const placeholderRows = showPlaceholders.map(slot => `
-    <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f9fafb;opacity:.45">
-      <div style="width:36px;height:36px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${SLOT_EMOJI[slot]}</div>
-      <div style="flex:1;font-size:13px;font-weight:500;color:var(--muted);text-transform:capitalize">${slot}</div>
-      <div style="font-size:11px;font-family:monospace;color:var(--muted)">not logged</div>
+    <div style="display:flex;align-items:stretch;background:white;border:1px dashed #d1d5db;border-radius:14px;margin-bottom:8px;overflow:hidden">
+      <div style="flex:1;display:flex;align-items:center;gap:12px;padding:12px 14px;min-width:0">
+        <div style="width:48px;height:48px;border-radius:8px;background:#f9fafb;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;opacity:.5">${SLOT_EMOJI[slot]}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:500;color:var(--muted);text-transform:capitalize;margin-bottom:2px">${slot}</div>
+          <div style="font-size:11px;font-family:monospace;color:#d1d5db">not logged</div>
+        </div>
+        <button onclick="${logAction(slot, todayKey)}" style="font-size:11px;font-family:monospace;font-weight:600;padding:6px 14px;border-radius:99px;background:#111;color:white;border:none;cursor:pointer;flex-shrink:0">Add now</button>
+      </div>
     </div>`).join('');
 
   const noMeals = todayLogs.length === 0 && showPlaceholders.length === 0;
@@ -1787,14 +1823,13 @@ function renderHome() {
     </div>` : ''}` : ''}
 
     <!-- Today's meals -->
-    <div class="card" style="margin-bottom:12px;padding:16px 18px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${noMeals?'0':'2px'}">
-        <div class="label" style="margin-bottom:0">Today's meals</div>
-        <button onclick="setState({screen:'analyse',analyseTab:'photo',photoDataUrls:[],mealText:'',mealContext:null,restaurantName:'',restaurantLocation:'',mealSlot:null,mealDate:new Date().toISOString().split('T')[0],photoDescription:'',analysisResult:null,analysisError:null,analysing:false,viewingLog:null,mealSaveError:null})" style="font-size:11px;font-family:monospace;font-weight:600;padding:3px 10px;border-radius:99px;background:#111;color:white;border:none;cursor:pointer">+ Log meal</button>
+    <div style="margin-bottom:4px">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 2px;margin-bottom:8px;border-bottom:1px solid var(--border)">
+        <span style="font-size:11px;font-family:'SF Mono',monospace;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)">Today</span>
       </div>
       ${noMeals
-        ? `<div style="padding:14px 0 2px;font-size:13px;color:var(--muted)">No meals logged yet — tap <strong>Log</strong> to get started</div>`
-        : `<div style="margin-top:4px">${mealRows}${placeholderRows}</div>`}
+        ? `<div style="font-size:13px;color:var(--muted);padding:8px 2px 16px">No meals logged yet — tap <strong>Log</strong> to get started</div>`
+        : mealRows + placeholderRows}
     </div>
 
     ${renderRecentMeals()}
