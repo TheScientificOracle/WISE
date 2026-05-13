@@ -1573,7 +1573,7 @@ function renderTabBar(activeTab) {
       <div class="nav-bar">
 
         <button class="nav-tab" onclick="setState({screen:'home'})">
-          <i class="ti ti-home nav-tab-icon" style="color:${activeTab === 'today' ? '#111' : 'var(--muted)'}"></i>
+          <i class="ti ti-chart-bar nav-tab-icon" style="color:${activeTab === 'today' ? '#111' : 'var(--muted)'}"></i>
           <span class="nav-tab-label ${activeTab === 'today' ? 'active' : 'inactive'}">Today</span>
         </button>
 
@@ -1596,66 +1596,174 @@ function renderHome() {
   const p = state.profile;
   const targets = calcTargets(p);
   const goal = {fuel:'Performance',muscle:'Build Muscle',fat:'Lose Fat',recomp:'Recomposition'}[p.goal];
-  const exp = state.homeTargetsExpanded;
+  const todayStr  = new Date().toDateString();
+  const dateLabel = new Date().toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'short'});
+
+  // ── Today's logs ──────────────────────────────────────────────────────────
+  const todayLogs = state.mealLogs.filter(l => l.logged_at && new Date(l.logged_at).toDateString() === todayStr);
+
+  const running = todayLogs.reduce((acc, log) => {
+    const t = log.totals || {};
+    return {
+      cal:      Math.round(acc.cal      + (t.cal      || 0)),
+      protein:  +((acc.protein  + (t.protein  || 0)).toFixed(1)),
+      fat:      +((acc.fat      + (t.fat      || 0)).toFixed(1)),
+      carbs:    +((acc.carbs    + (t.carbs    || 0)).toFixed(1)),
+      fibre:    +((acc.fibre    + (t.fibre    || 0)).toFixed(1)),
+      vitamin_d:+((acc.vitamin_d+(t.vitamin_d || 0)).toFixed(3)),
+      iron:     +((acc.iron     +(t.iron      || 0)).toFixed(2)),
+      zinc:     +((acc.zinc     +(t.zinc      || 0)).toFixed(2)),
+      magnesium:+((acc.magnesium+(t.magnesium || 0)).toFixed(1)),
+      b12:      +((acc.b12      +(t.b12       || 0)).toFixed(2)),
+      calcium:  +((acc.calcium  +(t.calcium   || 0)).toFixed(1)),
+      potassium:+((acc.potassium+(t.potassium || 0)).toFixed(1)),
+    };
+  }, { cal:0, protein:0, fat:0, carbs:0, fibre:0, vitamin_d:0, iron:0, zinc:0, magnesium:0, b12:0, calcium:0, potassium:0 });
+
+  // ── Progress badge ────────────────────────────────────────────────────────
+  const calPct = targets.cal > 0 ? Math.round((running.cal / targets.cal) * 100) : 0;
+  const badgeColor = calPct >= 90 ? '#16a34a' : calPct >= 50 ? '#d97706' : '#6b7280';
+  const badgeBg    = calPct >= 90 ? '#f0fdf4' : calPct >= 50 ? '#fffbeb' : '#f3f4f6';
+
+  // ── Macro progress bar helper ─────────────────────────────────────────────
+  function mBar(label, consumed, target, color) {
+    const pct  = target > 0 ? Math.min(100, Math.round((consumed / target) * 100)) : 0;
+    const over = consumed > target * 1.05;
+    const c    = over ? '#dc2626' : color;
+    return `
+      <div style="min-width:0">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px">
+          <span style="font-size:9px;font-family:monospace;letter-spacing:.08em;font-weight:600;color:${c}">${label}${over?' !':''}</span>
+          <span style="font-size:11px;font-family:monospace;color:${over?'#dc2626':'var(--text)'}"><strong>${consumed}</strong><span style="color:var(--muted)">/${target}g</span></span>
+        </div>
+        <div style="height:3px;background:#f3f4f6;border-radius:99px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:${c};border-radius:99px"></div>
+        </div>
+      </div>`;
+  }
+
+  // ── Gaps summary ──────────────────────────────────────────────────────────
+  const gaps     = getGaps(running, targets);
+  const problems = gaps.filter(g => g.impact !== 'GOOD');
+
+  // ── Low micronutrients ────────────────────────────────────────────────────
+  const rdas = getMicroRDAs(p);
+  const MICRO_LABELS = { vitamin_d:'Vitamin D', iron:'Iron', zinc:'Zinc', magnesium:'Magnesium', b12:'B12', calcium:'Calcium', potassium:'Potassium' };
+  const lowMicros = Object.entries(rdas)
+    .filter(([key, rda]) => rda > 0 && (running[key] / rda) * 100 < 40)
+    .map(([key]) => MICRO_LABELS[key]);
+
+  // ── Today's meals list ────────────────────────────────────────────────────
+  const SLOT_EMOJI = { breakfast:'🌅', lunch:'☀️', dinner:'🌙', snack:'🍎' };
+  const loggedSlots = new Set(todayLogs.map(l => l.context?.slot).filter(Boolean));
+  const nowHour = new Date().getHours();
+
+  // Build meal rows (sorted by time)
+  const sortedLogs = [...todayLogs].sort((a,b) => new Date(a.logged_at) - new Date(b.logged_at));
+  const mealRows = sortedLogs.map(log => {
+    const idx  = state.mealLogs.indexOf(log);
+    const name = extractShortMealName(log.summary) || 'Meal';
+    const slot = log.context?.slot;
+    return `
+      <button onclick="openMealLog(${idx})" style="display:flex;align-items:center;gap:12px;padding:10px 0;border:none;background:none;width:100%;text-align:left;cursor:pointer;border-bottom:1px solid #f9fafb">
+        ${log.photo_data_url
+          ? `<img src="${log.photo_data_url}" style="width:36px;height:36px;border-radius:8px;object-fit:cover;flex-shrink:0">`
+          : `<div style="width:36px;height:36px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${SLOT_EMOJI[slot]||'🍽️'}</div>`}
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</div>
+        </div>
+        <div style="font-size:12px;font-family:monospace;color:var(--subtle);flex-shrink:0">${log.totals?.cal||0} kcal</div>
+      </button>`;
+  }).join('');
+
+  // Unlogged slot placeholders
+  const showPlaceholders = ['lunch','dinner'].filter(slot =>
+    !loggedSlots.has(slot) && (slot === 'lunch' ? nowHour >= 11 : nowHour >= 16)
+  );
+  const placeholderRows = showPlaceholders.map(slot => `
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f9fafb;opacity:.45">
+      <div style="width:36px;height:36px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${SLOT_EMOJI[slot]}</div>
+      <div style="flex:1;font-size:13px;font-weight:500;color:var(--muted);text-transform:capitalize">${slot}</div>
+      <div style="font-size:11px;font-family:monospace;color:var(--muted)">not logged</div>
+    </div>`).join('');
+
+  const noMeals = todayLogs.length === 0 && showPlaceholders.length === 0;
+
   return `
-    <div style="margin-bottom:28px">
-      <div class="mono" style="font-size:11px;color:var(--muted);letter-spacing:.2em;text-transform:uppercase;margin-bottom:6px">What I Should Eat</div>
+    <!-- Header -->
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:20px">
       <h1 style="font-size:38px;font-weight:600;letter-spacing:-.04em;line-height:1">WISE</h1>
-      <p class="italic" style="color:var(--muted);font-size:16px;margin-top:6px">What I Should Eat</p>
+      <div style="font-family:monospace;font-size:11px;color:var(--muted);line-height:1">${p.weight}kg · ${goal} · ${dateLabel}</div>
     </div>
 
-    <button onclick="setState({screen:'profile'})" style="display:flex;align-items:center;gap:8px;background:#f9fafb;border:1px solid var(--border);border-radius:10px;padding:8px 14px;margin-bottom:12px;font-size:12px;color:var(--subtle);font-family:monospace;width:100%;text-align:left">
-      <i class="ti ti-user" style="font-size:14px;flex-shrink:0"></i> ${p.weight}kg · ${p.height}cm · ${p.age}y · ${p.sex==='male'?'M':'F'} · ${goal}
-      <span style="color:#d1d5db;margin-left:auto">edit</span>
-    </button>
-
-    <!-- Daily targets card -->
-    <div class="card" style="margin-bottom:20px;padding:16px 18px">
+    <!-- Today's progress -->
+    <div class="card" style="margin-bottom:12px;padding:16px 18px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <div class="label" style="margin-bottom:0">Today's targets</div>
-        <div style="font-size:11px;font-family:monospace;color:var(--muted)">${goal}</div>
+        <div class="label" style="margin-bottom:0">Today's progress</div>
+        <div style="font-size:12px;font-weight:700;font-family:monospace;padding:2px 10px;border-radius:99px;background:${badgeBg};color:${badgeColor}">${calPct}%</div>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-bottom:12px">
-        <div style="text-align:center">
-          <div style="font-size:16px;font-weight:700">${targets.cal}</div>
-          <div style="font-size:9px;color:var(--muted);font-family:monospace;text-transform:uppercase;margin-top:2px">kcal</div>
+      <!-- Calories bar -->
+      <div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px">
+          <span style="font-size:9px;font-family:monospace;letter-spacing:.08em;font-weight:600;color:var(--muted)">CALORIES</span>
+          <span style="font-size:12px;font-family:monospace"><strong>${running.cal}</strong><span style="color:var(--muted)"> / ${targets.cal} kcal</span></span>
         </div>
-        <div style="text-align:center">
-          <div style="font-size:16px;font-weight:700;color:var(--protein)">${targets.protein}g</div>
-          <div style="font-size:9px;color:var(--muted);font-family:monospace;text-transform:uppercase;margin-top:2px">protein</div>
-        </div>
-        <div style="text-align:center">
-          <div style="font-size:16px;font-weight:700;color:var(--fat)">${targets.fat}g</div>
-          <div style="font-size:9px;color:var(--muted);font-family:monospace;text-transform:uppercase;margin-top:2px">fat</div>
-        </div>
-        <div style="text-align:center">
-          <div style="font-size:16px;font-weight:700;color:var(--carbs)">${targets.carbs}g</div>
-          <div style="font-size:9px;color:var(--muted);font-family:monospace;text-transform:uppercase;margin-top:2px">carbs</div>
-        </div>
-        <div style="text-align:center">
-          <div style="font-size:16px;font-weight:700;color:var(--fibre)">${targets.fibre}g</div>
-          <div style="font-size:9px;color:var(--muted);font-family:monospace;text-transform:uppercase;margin-top:2px">fibre</div>
+        <div style="height:4px;background:#f3f4f6;border-radius:99px;overflow:hidden">
+          <div style="height:100%;width:${Math.min(100,calPct)}%;background:#111;border-radius:99px"></div>
         </div>
       </div>
-      <button onclick="setState({homeTargetsExpanded:!state.homeTargetsExpanded})"
-        style="background:none;border:none;padding:0;font-size:12px;color:var(--subtle);cursor:pointer;display:flex;align-items:center;gap:4px;font-family:inherit">
-        ${exp ? '▲' : '▼'} How did we get these numbers?
-      </button>
-      ${exp ? `<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px">${homeTargetsExplainer(p, targets)}</div>` : ''}
+      <!-- 2×2 macro grid -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px">
+        ${mBar('PROTEIN', running.protein, targets.protein, 'var(--protein)')}
+        ${mBar('FAT',     running.fat,     targets.fat,     'var(--fat)')}
+        ${mBar('CARBS',   running.carbs,   targets.carbs,   'var(--carbs)')}
+        ${mBar('FIBRE',   running.fibre,   targets.fibre,   'var(--fibre)')}
+      </div>
     </div>
 
-    <button class="home-card-pro" onclick="setState({screen:'gaps'})">
-      <i class="ti ti-chart-bar" style="font-size:26px;margin-bottom:8px;display:block;color:var(--text)"></i>
-      <div class="home-card-title">Check my gaps</div>
-      <div style="font-size:13px;color:var(--muted);line-height:1.5">See today's meals and exactly what your day is still missing.</div>
-    </button>
+    <!-- What you should eat (links to gaps detail) -->
+    <div class="card" style="margin-bottom:10px;padding:0;overflow:hidden">
+      <button onclick="setState({screen:'gaps'})" style="display:flex;align-items:center;gap:12px;padding:14px 18px;background:none;border:none;width:100%;text-align:left;cursor:pointer">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:15px;font-weight:600;margin-bottom:2px">What you should eat</div>
+          <div style="font-size:12px;color:var(--muted)">
+            ${problems.length === 0
+              ? 'All macros on track — great work'
+              : problems.map(g => g.label.replace(' Gap','').toLowerCase()).join(' & ') + ' gap' + (problems.length > 1 ? 's' : '')}
+          </div>
+        </div>
+        ${problems.length > 0
+          ? `<div style="font-size:11px;font-weight:700;font-family:monospace;padding:3px 10px;border-radius:99px;background:#fffbeb;color:#d97706;flex-shrink:0;white-space:nowrap">${problems.length} gap${problems.length>1?'s':''}</div>`
+          : `<div style="font-size:11px;font-weight:700;font-family:monospace;padding:3px 10px;border-radius:99px;background:#f0fdf4;color:#16a34a;flex-shrink:0">✓</div>`}
+        <span style="color:var(--muted);font-size:16px;flex-shrink:0;margin-left:4px">›</span>
+      </button>
+    </div>
 
-    ${renderRecentMeals()}
+    <!-- Micronutrients (only if any low) -->
+    ${lowMicros.length > 0 ? `
+    <div class="card" style="margin-bottom:10px;padding:0;overflow:hidden">
+      <button onclick="setState({screen:'gaps'})" style="display:flex;align-items:center;gap:12px;padding:14px 18px;background:none;border:none;width:100%;text-align:left;cursor:pointer">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:15px;font-weight:600;margin-bottom:2px">Micronutrients</div>
+          <div style="font-size:12px;color:var(--muted)">${lowMicros.slice(0,3).join(', ')} low</div>
+        </div>
+        <div style="font-size:11px;font-weight:700;font-family:monospace;padding:3px 10px;border-radius:99px;background:#fef2f2;color:#dc2626;flex-shrink:0;white-space:nowrap">${lowMicros.length} low</div>
+        <span style="color:var(--muted);font-size:16px;flex-shrink:0;margin-left:4px">›</span>
+      </button>
+    </div>` : ''}
 
-    <div style="margin-top:20px;display:flex;justify-content:center;gap:20px">
+    <!-- Today's meals -->
+    <div class="card" style="margin-bottom:12px;padding:16px 18px">
+      <div class="label" style="margin-bottom:${noMeals?'0':'2px'}">Today's meals</div>
+      ${noMeals
+        ? `<div style="padding:14px 0 2px;font-size:13px;color:var(--muted)">No meals logged yet — tap <strong>Log</strong> to get started</div>`
+        : `<div style="margin-top:4px">${mealRows}${placeholderRows}</div>`}
+    </div>
+
+    <div style="display:flex;justify-content:center;margin-top:12px">
       <button onclick="handleSignOut()" style="background:none;border:none;font-size:11px;color:#d1d5db;font-family:monospace;cursor:pointer">Sign out</button>
     </div>
-    <div class="mono" style="margin-top:8px;text-align:center;font-size:11px;color:#d1d5db">Values from USDA FoodData Central · Mifflin-St Jeor BMR</div>
+    <div class="mono" style="margin-top:6px;text-align:center;font-size:11px;color:#d1d5db">Values from USDA FoodData Central · Mifflin-St Jeor BMR</div>
 
     ${renderTabBar('today')}`;
 }
