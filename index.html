@@ -1364,12 +1364,14 @@ function renderMicronutrientsL1(todayLogs, profile) {
 
   return `
   <div class="card" style="margin-bottom:12px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+    <button onclick="var c=document.getElementById('micro-body'),o=c.style.display!=='none';c.style.display=o?'none':'';this.querySelector('.chev').textContent=o?'▼':'▲'" style="width:100%;display:flex;align-items:center;justify-content:space-between;background:none;border:none;padding:0;cursor:pointer;margin-bottom:4px;text-align:left">
       <div style="display:flex;align-items:center;gap:8px">
         <span style="font-size:16px">🔬</span>
         <div class="label" style="margin-bottom:0">Micronutrients</div>
       </div>
-    </div>
+      <span class="chev" style="font-size:10px;color:var(--muted)">▲</span>
+    </button>
+    <div id="micro-body">
     <p style="font-size:11px;color:var(--muted);margin-bottom:14px;font-style:italic">Directional estimates · goal-priority order · log more meals for accuracy</p>
     ${todayLogs.length < 2 && !hasAnyData
       ? `<div style="text-align:center;padding:16px 0;font-size:13px;color:var(--muted)">Log at least 2 meals to see micronutrient coverage</div>`
@@ -1399,6 +1401,7 @@ function renderMicronutrientsL1(todayLogs, profile) {
             </div>
           </div>`;
         }).join('')}
+    </div>
   </div>`;
 }
 
@@ -2772,16 +2775,21 @@ function renderGaps() {
 
     <!-- Gap recommendations -->
     <div class="card" style="margin-bottom:12px">
-      <div class="label" style="margin-bottom:2px">What you should eat</div>
-      <p style="font-size:12px;color:var(--muted);margin-bottom:16px;font-style:italic">${todayLogs.length} meal${todayLogs.length !== 1 ? 's' : ''} logged · gaps against full daily target</p>
-      ${gaps.length > 0 ? gaps.map((g, i) => `
-        <div style="display:flex;gap:12px;${i < gaps.length - 1 ? 'margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid #f3f4f6' : ''}">
-          <div class="impact impact-${g.impact}">${g.impact}</div>
-          <div>
-            <div class="mono" style="font-size:11px;color:var(--muted);margin-bottom:3px">${g.label}</div>
-            <div style="font-size:13px;color:#374151;line-height:1.5">${g.text}</div>
-          </div>
-        </div>`).join('') : `<p style="font-size:13px;color:#16a34a;margin:0">✓ You're hitting your macro targets today — great work.</p>`}
+      <button onclick="var c=document.getElementById('gaps-body'),o=c.style.display!=='none';c.style.display=o?'none':'';this.querySelector('.chev').textContent=o?'▼':'▲'" style="width:100%;display:flex;align-items:center;justify-content:space-between;background:none;border:none;padding:0;cursor:pointer;margin-bottom:2px;text-align:left">
+        <div class="label" style="margin-bottom:0">What you should eat</div>
+        <span class="chev" style="font-size:10px;color:var(--muted)">▲</span>
+      </button>
+      <div id="gaps-body">
+        <p style="font-size:12px;color:var(--muted);margin-bottom:16px;font-style:italic">${todayLogs.length} meal${todayLogs.length !== 1 ? 's' : ''} logged · gaps against full daily target</p>
+        ${gaps.length > 0 ? gaps.map((g, i) => `
+          <div style="display:flex;gap:12px;${i < gaps.length - 1 ? 'margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid #f3f4f6' : ''}">
+            <div class="impact impact-${g.impact}">${g.impact}</div>
+            <div>
+              <div class="mono" style="font-size:11px;color:var(--muted);margin-bottom:3px">${g.label}</div>
+              <div style="font-size:13px;color:#374151;line-height:1.5">${g.text}</div>
+            </div>
+          </div>`).join('') : `<p style="font-size:13px;color:#16a34a;margin:0">✓ You're hitting your macro targets today — great work.</p>`}
+      </div>
     </div>
 
     <!-- Micronutrients L1 (today) -->
