@@ -286,6 +286,7 @@ const state = {
   ingredientsExpanded: false,
   ingredientRows: [{name:'',qty:'',unit:'g'},{name:'',qty:'',unit:'g'},{name:'',qty:'',unit:'g'},{name:'',qty:'',unit:'g'}],
   mealSlot: null,              // 'breakfast' | 'lunch' | 'dinner' | 'snack' | null
+  mealDate: new Date().toISOString().split('T')[0], // YYYY-MM-DD, defaults to today, backdatable
   photoDescription: '',        // optional one-line hint sent alongside photo
   gapsExpandedMacro: null,     // 'cal' | 'protein' | 'fat' | 'carbs' | 'fibre' | null — clickable bars
   gapsExpandedFatSubtype: null, // 'sat' | 'mono' | 'poly' | null — second level inside fat bar
@@ -418,6 +419,15 @@ async function saveMealLog(result) {
   const photo  = state.analyseTab === 'photo' && state.photoDataUrls.length > 0
     ? state.photoDataUrls[0] : null;
   try {
+    // Build logged_at: use mealDate (YYYY-MM-DD) + current time, so backdated meals
+    // land on the right calendar day but preserve a meaningful timestamp within that day.
+    const loggedAt = (() => {
+      const today = new Date().toISOString().split('T')[0];
+      if (!state.mealDate || state.mealDate === today) return new Date().toISOString();
+      // Backdated: use noon on the chosen date to avoid timezone edge cases
+      return new Date(state.mealDate + 'T12:00:00').toISOString();
+    })();
+
     const { error } = await sb.from('meal_logs').insert({
       user_id:         state.user.id,
       input_type:      state.analyseTab,
@@ -429,6 +439,7 @@ async function saveMealLog(result) {
       photo_data_url:  photo,
       totals:          { cal: totals.cal, protein: totals.protein, fat: totals.fat, sat_fat: totals.sat_fat, poly_fat: totals.poly_fat, mono_fat: totals.mono_fat, carbs: totals.carbs, fibre: totals.fibre, vitamin_d: totals.vitamin_d, iron: totals.iron, zinc: totals.zinc, magnesium: totals.magnesium, b12: totals.b12, calcium: totals.calcium, potassium: totals.potassium },
       context:         state.mealSlot ? { slot: state.mealSlot } : null,
+      logged_at:       loggedAt,
     });
     if (error) throw error;
     loadMealLogs(); // refresh home screen list without awaiting
@@ -1524,14 +1535,21 @@ function renderRecentMeals() {
   });
   const sortedKeys = Object.keys(groups).sort().reverse(); // newest first
 
+  const targets = calcTargets(state.profile);
+
   const groupsHTML = sortedKeys.map(key => {
     const { date, logs } = groups[key];
     const isToday = date.getTime() === todayMidnight.getTime();
     const isYest  = date.getTime() === yesterdayMidnight.getTime();
-    const label = isToday ? 'Today'
-                : isYest  ? 'Yesterday'
+    // Skip today — shown inline on home screen already
+    if (isToday) return '';
+    const label = isYest ? 'Yesterday'
                 : date.toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' });
     const listId = 'mg-' + key;
+
+    // Incomplete day: has meals but total calories look like a meal was missed (< 70% of target)
+    const dayCal = logs.reduce((s, { log }) => s + (log.totals?.cal || 0), 0);
+    const isIncomplete = dayCal > 0 && dayCal < targets.cal * 0.70;
 
     const mealsHTML = logs.map(({ log, i }) => {
       const dt = new Date(log.logged_at);
@@ -1552,21 +1570,24 @@ function renderRecentMeals() {
 
     return `<div style="margin-bottom:4px">
       <button onclick="var el=document.getElementById('${listId}'),o=el.style.display!=='none';el.style.display=o?'none':'';this.querySelector('.chev').textContent=o?'▼':'▲'" style="width:100%;display:flex;justify-content:space-between;align-items:center;background:none;border:none;border-bottom:1px solid var(--border);padding:8px 2px 8px;margin-bottom:8px;cursor:pointer;text-align:left">
-        <span style="font-size:11px;font-family:'SF Mono',monospace;text-transform:uppercase;letter-spacing:.1em;color:${isToday?'#374151':'var(--muted)'};">${label}</span>
-        <span class="chev" style="font-size:9px;color:var(--muted)">${isToday?'▲':'▼'}</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:11px;font-family:'SF Mono',monospace;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);">${label}</span>
+          ${isIncomplete ? `<span style="font-size:9px;font-family:monospace;font-weight:700;padding:2px 6px;border-radius:99px;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;letter-spacing:.04em">INCOMPLETE</span>` : ''}
+        </div>
+        <span class="chev" style="font-size:9px;color:var(--muted)">▼</span>
       </button>
-      <div id="${listId}" style="display:${isToday?'':'none'}">${mealsHTML}</div>
+      <div id="${listId}" style="display:none">${mealsHTML}</div>
     </div>`;
   }).join('');
 
-  return `<div style="margin-top:24px">${groupsHTML}</div>`;
+  return `<div style="margin-top:8px">${groupsHTML}</div>`;
 }
 
 // ─── Bottom tab bar ───────────────────────────────────────────────────────────
 function renderTabBar(activeTab) {
   // activeTab: 'today' | 'profile'
   // The elevated Log button always triggers the analyse flow
-  const logAction = `setState({screen:'analyse',analyseTab:'photo',photoDataUrls:[],mealText:'',mealContext:null,restaurantName:'',restaurantLocation:'',mealSlot:null,photoDescription:'',analysisResult:null,analysisError:null,analysing:false,viewingLog:null,mealSaveError:null})`;
+  const logAction = `setState({screen:'analyse',analyseTab:'photo',photoDataUrls:[],mealText:'',mealContext:null,restaurantName:'',restaurantLocation:'',mealSlot:null,mealDate:new Date().toISOString().split('T')[0],photoDescription:'',analysisResult:null,analysisError:null,analysing:false,viewingLog:null,mealSaveError:null})`;
   return `
     <div class="nav-spacer"></div>
     <div class="nav-bar-wrap">
@@ -1721,7 +1742,8 @@ function renderHome() {
       </div>
     </div>
 
-    <!-- What you should eat (links to gaps detail) -->
+    <!-- What you should eat + micronutrients — only when meals have been logged today -->
+    ${todayLogs.length > 0 ? `
     <div class="card" style="margin-bottom:10px;padding:0;overflow:hidden">
       <button onclick="setState({screen:'gaps'})" style="display:flex;align-items:center;gap:12px;padding:14px 18px;background:none;border:none;width:100%;text-align:left;cursor:pointer">
         <div style="flex:1;min-width:0">
@@ -1738,8 +1760,6 @@ function renderHome() {
         <span style="color:var(--muted);font-size:16px;flex-shrink:0;margin-left:4px">›</span>
       </button>
     </div>
-
-    <!-- Micronutrients (only if any low) -->
     ${lowMicros.length > 0 ? `
     <div class="card" style="margin-bottom:10px;padding:0;overflow:hidden">
       <button onclick="setState({screen:'gaps'})" style="display:flex;align-items:center;gap:12px;padding:14px 18px;background:none;border:none;width:100%;text-align:left;cursor:pointer">
@@ -1750,7 +1770,7 @@ function renderHome() {
         <div style="font-size:11px;font-weight:700;font-family:monospace;padding:3px 10px;border-radius:99px;background:#fef2f2;color:#dc2626;flex-shrink:0;white-space:nowrap">${lowMicros.length} low</div>
         <span style="color:var(--muted);font-size:16px;flex-shrink:0;margin-left:4px">›</span>
       </button>
-    </div>` : ''}
+    </div>` : ''}` : ''}
 
     <!-- Today's meals -->
     <div class="card" style="margin-bottom:12px;padding:16px 18px">
@@ -1759,6 +1779,8 @@ function renderHome() {
         ? `<div style="padding:14px 0 2px;font-size:13px;color:var(--muted)">No meals logged yet — tap <strong>Log</strong> to get started</div>`
         : `<div style="margin-top:4px">${mealRows}${placeholderRows}</div>`}
     </div>
+
+    ${renderRecentMeals()}
 
     <div style="display:flex;justify-content:center;margin-top:12px">
       <button onclick="handleSignOut()" style="background:none;border:none;font-size:11px;color:#d1d5db;font-family:monospace;cursor:pointer">Sign out</button>
@@ -1827,6 +1849,26 @@ function contextToggleHTML() {
         ${slotBtn('dinner','Dinner','🌙')}
         ${slotBtn('snack','Snack','🍎')}
       </div>
+
+      <!-- Date: when was this eaten? (defaults to today, allows backdating) -->
+      ${(() => {
+        const today = new Date().toISOString().split('T')[0];
+        const isBackdated = state.mealDate && state.mealDate !== today;
+        const label = isBackdated
+          ? new Date(state.mealDate + 'T12:00:00').toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'short'})
+          : 'Today';
+        return `
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div class="label" style="margin-bottom:0">When?</div>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;position:relative">
+            <span style="font-size:13px;font-family:monospace;color:${isBackdated?'#6366f1':'var(--subtle)'};font-weight:${isBackdated?'700':'400'}">${label}</span>
+            <i class="ti ti-calendar" style="font-size:15px;color:${isBackdated?'#6366f1':'var(--muted)'}"></i>
+            <input type="date" value="${state.mealDate || today}" max="${today}"
+              onchange="setState({mealDate:this.value})"
+              style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%">
+          </label>
+        </div>`;
+      })()}
 
       <!-- Context: where is this from? -->
       <div class="label" style="margin-bottom:8px">Where is it from?</div>
@@ -2149,7 +2191,8 @@ function renderAmbiguousResult(r) {
       <span style="font-size:16px;color:#d1d5db;margin-left:auto;flex-shrink:0;align-self:center">→</span>
     </button>
 
-    <p style="text-align:center;font-size:12px;color:#d1d5db;margin-top:16px">WISE · Honest analysis, not best guesses</p>`;
+    <p style="text-align:center;font-size:12px;color:#d1d5db;margin-top:16px">WISE · Honest analysis, not best guesses</p>
+    ${renderTabBar('today')}`;
 }
 
 function renderResults() {
@@ -2362,7 +2405,9 @@ function renderResults() {
       </div>
     </div>` : ''}
 
-    ${!state.viewingLog ? `<button class="btn-primary" onclick="setState({screen:'gaps'})">→ Check today's gaps</button>` : ''}
+    ${!state.viewingLog ? `<button class="btn-primary" onclick="setState({screen:'home'})">→ See today's progress</button>` : ''}
+
+    ${renderTabBar('today')}
 
     ${isPhoto ? `<p style="text-align:center;font-size:11px;color:#d1d5db;margin-top:4px">Photo estimates can vary ±25% · USDA FoodData Central</p>` : `<p style="text-align:center;font-size:11px;color:#d1d5db;margin-top:4px">USDA FoodData Central · AI-powered analysis</p>`}`;
 }
@@ -2728,9 +2773,7 @@ function renderGaps() {
       </div>`;
     })()}
 
-    <button class="btn-primary" onclick="setState({screen:'analyse',analyseTab:'photo',photoDataUrls:[],mealText:'',mealContext:null,restaurantName:'',restaurantLocation:'',mealSlot:null,photoDescription:'',analysisResult:null,analysisError:null,analysing:false,viewingLog:null,mealSaveError:null})">+ Analyse a meal</button>
-
-    <button class="btn-secondary" style="margin-top:10px" onclick="setState({screen:'fuel',fuelPlan:null,fuelError:null})">⚡ Plan the rest of my day →</button>
+    <button class="btn-primary" onclick="setState({screen:'fuel',fuelPlan:null,fuelError:null})">⚡ Plan the rest of my day →</button>
 
     <div class="mono" style="margin-top:16px;text-align:center;font-size:11px;color:#d1d5db">Values from USDA FoodData Central · Mifflin-St Jeor BMR</div>
 
