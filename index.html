@@ -201,6 +201,42 @@
     letter-spacing: 0.05em; color: var(--text);
   }
   .apikey-input:focus { border-color: #111; }
+
+  /* Bottom tab bar */
+  .nav-bar-wrap {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+    background: white; border-top: 1px solid var(--border);
+    box-shadow: 0 -1px 16px rgba(0,0,0,0.07);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .nav-bar {
+    max-width: 500px; margin: 0 auto;
+    display: flex; align-items: stretch; height: 60px; padding: 0 8px;
+  }
+  .nav-tab {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 3px; background: none; border: none;
+    cursor: pointer; padding: 8px 0;
+  }
+  .nav-tab-icon { font-size: 19px; line-height: 1; }
+  .nav-tab-label {
+    font-size: 9px; font-family: 'SF Mono', monospace; letter-spacing: 0.08em;
+    text-transform: uppercase; font-weight: 500;
+  }
+  .nav-tab-label.active { color: #111; font-weight: 700; }
+  .nav-tab-label.inactive { color: var(--muted); }
+  .nav-log-wrap {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+  }
+  .nav-log-btn {
+    width: 54px; height: 54px; background: #111; border: none; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-size: 22px;
+    cursor: pointer; box-shadow: 0 4px 18px rgba(0,0,0,0.22);
+    transform: translateY(-10px);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .nav-log-btn:active { transform: translateY(-8px); box-shadow: 0 2px 10px rgba(0,0,0,0.18); }
+  .nav-spacer { height: 80px; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -1081,7 +1117,8 @@ function renderProfile() {
           <div><div class="goal-title">${t}</div><div class="goal-desc">${d}</div></div>
         </button>`).join('')}
     </div>
-    <button class="btn-primary" onclick="saveProfile()">Let's go →</button>`;
+    <button class="btn-primary" onclick="saveProfile()">Let's go →</button>
+    ${renderTabBar('profile')}`;
 }
 
 function homeTargetsExplainer(p, targets) {
@@ -1518,6 +1555,36 @@ function renderRecentMeals() {
   return `<div style="margin-top:24px">${groupsHTML}</div>`;
 }
 
+// ─── Bottom tab bar ───────────────────────────────────────────────────────────
+function renderTabBar(activeTab) {
+  // activeTab: 'today' | 'profile'
+  // The elevated Log button always triggers the analyse flow
+  const logAction = `setState({screen:'analyse',analyseTab:'photo',photoDataUrls:[],mealText:'',mealContext:null,restaurantName:'',restaurantLocation:'',mealSlot:null,photoDescription:'',analysisResult:null,analysisError:null,analysing:false,viewingLog:null,mealSaveError:null})`;
+  return `
+    <div class="nav-spacer"></div>
+    <div class="nav-bar-wrap">
+      <div class="nav-bar">
+
+        <button class="nav-tab" onclick="setState({screen:'home'})">
+          <span class="nav-tab-icon">${activeTab === 'today' ? '🏠' : '🏠'}</span>
+          <span class="nav-tab-label ${activeTab === 'today' ? 'active' : 'inactive'}">Today</span>
+        </button>
+
+        <div class="nav-log-wrap">
+          <button class="nav-log-btn" onclick="${logAction}" title="Log a meal">
+            📷
+          </button>
+        </div>
+
+        <button class="nav-tab" onclick="setState({screen:'profile'})">
+          <span class="nav-tab-icon">👤</span>
+          <span class="nav-tab-label ${activeTab === 'profile' ? 'active' : 'inactive'}">Profile</span>
+        </button>
+
+      </div>
+    </div>`;
+}
+
 function renderHome() {
   const p = state.profile;
   const targets = calcTargets(p);
@@ -1587,7 +1654,9 @@ function renderHome() {
     <div style="margin-top:20px;display:flex;justify-content:center;gap:20px">
       <button onclick="handleSignOut()" style="background:none;border:none;font-size:11px;color:#d1d5db;font-family:monospace;cursor:pointer">Sign out</button>
     </div>
-    <div class="mono" style="margin-top:8px;text-align:center;font-size:11px;color:#d1d5db">Values from USDA FoodData Central · Mifflin-St Jeor BMR</div>`;
+    <div class="mono" style="margin-top:8px;text-align:center;font-size:11px;color:#d1d5db">Values from USDA FoodData Central · Mifflin-St Jeor BMR</div>
+
+    ${renderTabBar('today')}`;
 }
 
 function renderAnalyse() {
@@ -2554,7 +2623,9 @@ function renderGaps() {
 
     <button class="btn-secondary" style="margin-top:10px" onclick="setState({screen:'fuel',fuelPlan:null,fuelError:null})">⚡ Plan the rest of my day →</button>
 
-    <div class="mono" style="margin-top:16px;text-align:center;font-size:11px;color:#d1d5db">Values from USDA FoodData Central · Mifflin-St Jeor BMR</div>`;
+    <div class="mono" style="margin-top:16px;text-align:center;font-size:11px;color:#d1d5db">Values from USDA FoodData Central · Mifflin-St Jeor BMR</div>
+
+    ${renderTabBar('today')}`;
 }
 
 function renderPaywall() {
