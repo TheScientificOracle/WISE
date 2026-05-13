@@ -2268,7 +2268,6 @@ function renderResults() {
 
   const targets  = calcTargets(state.profile);
   const totals   = totalsFrom(r.identified);
-  const gaps     = getGaps(totals, targets);
   const isPhoto  = state.analyseTab === 'photo';
   const calPct   = Math.round(totals.cal / targets.cal * 100);
   const confCls  = r.confidence === 'High' ? 'high' : r.confidence === 'Medium' ? 'medium' : 'low';
@@ -2473,19 +2472,6 @@ function renderResults() {
     </div>`;
     })()}
 
-    <!-- Gap analysis -->
-    <div class="card" style="margin-bottom:12px">
-      <div class="label" style="margin-bottom:2px">Today's Gap Analysis</div>
-      <p style="font-size:12px;color:var(--muted);margin-bottom:16px;font-style:italic">Based on this meal only · Log more meals for your full day picture</p>
-      ${gaps.map((g, i) => `
-        <div style="display:flex;gap:12px;${i < gaps.length - 1 ? 'margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid #f3f4f6' : ''}">
-          <div class="impact impact-${g.impact}">${g.impact}</div>
-          <div>
-            <div class="mono" style="font-size:11px;color:var(--muted);margin-bottom:3px">${g.label}</div>
-            <div style="font-size:13px;color:#374151;line-height:1.5">${g.text}</div>
-          </div>
-        </div>`).join('')}
-    </div>
 
     <!-- Logging nudge / timestamp -->
     ${!state.viewingLog ? `
