@@ -218,7 +218,7 @@
     justify-content: center; gap: 3px; background: none; border: none;
     cursor: pointer; padding: 8px 0;
   }
-  .nav-tab-icon { font-size: 19px; line-height: 1; }
+  .nav-tab-icon { font-size: 22px; line-height: 1; }
   .nav-tab-label {
     font-size: 9px; font-family: 'SF Mono', monospace; letter-spacing: 0.08em;
     text-transform: uppercase; font-weight: 500;
@@ -239,6 +239,7 @@
   .nav-spacer { height: 80px; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
 </head>
 <body>
 <div id="app"></div>
@@ -668,8 +669,14 @@ async function runAnalysis() {
     } else {
       result = await analyseText(state.mealText.trim(), context);
     }
+    // If the model returned no ingredients (can happen with blended drinks / minimal photos),
+    // treat as ambiguous so the user gets a useful handoff screen rather than all-zero numbers.
+    if (!result.ambiguous && (!result.identified || result.identified.length === 0)) {
+      result.ambiguous = true;
+      result.ambiguityReason = result.ambiguityReason || 'WISE could not identify individual ingredients — this is often a blended drink, a very plain food, or an unclear photo. Try adding a description or entering ingredients manually.';
+    }
     await saveMealLog(result);
-    setState({ analysing: false, analysisResult: result, screen: 'results' });
+    setState({ analysing: false, analysisResult: result, screen: result.ambiguous ? 'ambiguousResult' : 'results' });
   } catch (err) {
     console.error(err);
     setState({ analysing: false, analysisError: err.message || 'Analysis failed. Please try again.' });
@@ -1566,18 +1573,18 @@ function renderTabBar(activeTab) {
       <div class="nav-bar">
 
         <button class="nav-tab" onclick="setState({screen:'home'})">
-          <span class="nav-tab-icon">${activeTab === 'today' ? '🏠' : '🏠'}</span>
+          <i class="ti ti-home nav-tab-icon" style="color:${activeTab === 'today' ? '#111' : 'var(--muted)'}"></i>
           <span class="nav-tab-label ${activeTab === 'today' ? 'active' : 'inactive'}">Today</span>
         </button>
 
         <div class="nav-log-wrap">
           <button class="nav-log-btn" onclick="${logAction}" title="Log a meal">
-            📷
+            <i class="ti ti-camera" style="color:white;font-size:22px;"></i>
           </button>
         </div>
 
         <button class="nav-tab" onclick="setState({screen:'profile'})">
-          <span class="nav-tab-icon">👤</span>
+          <i class="ti ti-user nav-tab-icon" style="color:${activeTab === 'profile' ? '#111' : 'var(--muted)'}"></i>
           <span class="nav-tab-label ${activeTab === 'profile' ? 'active' : 'inactive'}">Profile</span>
         </button>
 
@@ -1598,7 +1605,7 @@ function renderHome() {
     </div>
 
     <button onclick="setState({screen:'profile'})" style="display:flex;align-items:center;gap:8px;background:#f9fafb;border:1px solid var(--border);border-radius:10px;padding:8px 14px;margin-bottom:12px;font-size:12px;color:var(--subtle);font-family:monospace;width:100%;text-align:left">
-      👤 ${p.weight}kg · ${p.height}cm · ${p.age}y · ${p.sex==='male'?'M':'F'} · ${goal}
+      <i class="ti ti-user" style="font-size:14px;flex-shrink:0"></i> ${p.weight}kg · ${p.height}cm · ${p.age}y · ${p.sex==='male'?'M':'F'} · ${goal}
       <span style="color:#d1d5db;margin-left:auto">edit</span>
     </button>
 
@@ -1637,14 +1644,8 @@ function renderHome() {
       ${exp ? `<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px">${homeTargetsExplainer(p, targets)}</div>` : ''}
     </div>
 
-    <button class="home-card-free" onclick="setState({screen:'analyse',analyseTab:'photo',photoDataUrls:[],mealText:'',mealContext:null,restaurantName:'',restaurantLocation:'',mealSlot:null,photoDescription:'',analysisResult:null,analysisError:null,analysing:false,viewingLog:null,mealSaveError:null})">
-      <div style="font-size:26px;margin-bottom:8px">🍽️</div>
-      <div class="home-card-title">Analyse a meal</div>
-      <div style="font-size:13px;color:#9ca3af;line-height:1.5">Upload a photo or describe your meal. AI analysis — WISE shows its workings.</div>
-    </button>
-
-    <button class="home-card-free" onclick="setState({screen:'gaps'})">
-      <div style="font-size:26px;margin-bottom:8px">🔍</div>
+    <button class="home-card-pro" onclick="setState({screen:'gaps'})">
+      <i class="ti ti-chart-bar" style="font-size:26px;margin-bottom:8px;display:block;color:var(--text)"></i>
       <div class="home-card-title">Check my gaps</div>
       <div style="font-size:13px;color:var(--muted);line-height:1.5">See today's meals and exactly what your day is still missing.</div>
     </button>
