@@ -286,7 +286,7 @@ const state = {
   ingredientsExpanded: false,
   ingredientRows: [{name:'',qty:'',unit:'g'},{name:'',qty:'',unit:'g'},{name:'',qty:'',unit:'g'},{name:'',qty:'',unit:'g'}],
   mealSlot: null,              // 'breakfast' | 'lunch' | 'dinner' | 'snack' | null
-  mealDate: new Date().toISOString().split('T')[0], // YYYY-MM-DD, defaults to today, backdatable
+  mealDate: localDateStr(), // YYYY-MM-DD, defaults to today (local time), backdatable
   photoDescription: '',        // optional one-line hint sent alongside photo
   gapsExpandedMacro: null,     // 'cal' | 'protein' | 'fat' | 'carbs' | 'fibre' | null — clickable bars
   gapsExpandedFatSubtype: null, // 'sat' | 'mono' | 'poly' | null — second level inside fat bar
@@ -341,6 +341,15 @@ function saveSessionState() {
       fuelMeals:        state.fuelMeals,
     }));
   } catch(e) {}
+}
+
+// ─── Date helpers ─────────────────────────────────────────────────────────────
+// toISOString() always returns UTC. In BST (UTC+1) midnight local = 23:00 UTC the
+// previous day, so toISOString().split('T')[0] gives yesterday's date. Always use
+// localDateStr() for YYYY-MM-DD keys so they reflect the user's local calendar day.
+function localDateStr(d) {
+  const date = d || new Date();
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 }
 
 // ─── Nutrition helpers ────────────────────────────────────────────────────────
@@ -426,7 +435,7 @@ async function saveMealLog(result) {
     // Build logged_at: use mealDate (YYYY-MM-DD) + current time, so backdated meals
     // land on the right calendar day but preserve a meaningful timestamp within that day.
     const loggedAt = (() => {
-      const today = new Date().toISOString().split('T')[0];
+      const today = localDateStr();
       if (!state.mealDate || state.mealDate === today) return new Date().toISOString();
       // Backdated: use noon on the chosen date to avoid timezone edge cases
       return new Date(state.mealDate + 'T12:00:00').toISOString();
@@ -1536,7 +1545,7 @@ function renderRecentMeals() {
   const groups = {};
   state.mealLogs.forEach((log, i) => {
     const d = new Date(log.logged_at); d.setHours(0,0,0,0);
-    const key = d.toISOString().split('T')[0]; // YYYY-MM-DD
+    const key = localDateStr(d); // YYYY-MM-DD in local time
     if (!groups[key]) groups[key] = { date: d, logs: [] };
     groups[key].logs.push({ log, i });
   });
@@ -1616,7 +1625,7 @@ function renderRecentMeals() {
 function renderTabBar(activeTab) {
   // activeTab: 'today' | 'profile'
   // The elevated Log button always triggers the analyse flow
-  const logAction = `setState({screen:'analyse',analyseTab:'photo',photoDataUrls:[],mealText:'',mealContext:null,restaurantName:'',restaurantLocation:'',mealSlot:null,mealDate:new Date().toISOString().split('T')[0],photoDescription:'',analysisResult:null,analysisError:null,analysing:false,viewingLog:null,mealSaveError:null})`;
+  const logAction = `setState({screen:'analyse',analyseTab:'photo',photoDataUrls:[],mealText:'',mealContext:null,restaurantName:'',restaurantLocation:'',mealSlot:null,mealDate:localDateStr(),photoDescription:'',analysisResult:null,analysisError:null,analysing:false,viewingLog:null,mealSaveError:null})`;
   return `
     <div class="nav-spacer"></div>
     <div class="nav-bar-wrap">
@@ -1707,7 +1716,7 @@ function renderHome() {
   const SLOT_EMOJI = { breakfast:'🌅', lunch:'☀️', dinner:'🌙', snack:'🍎' };
   const loggedSlots = new Set(todayLogs.map(l => l.context?.slot).filter(Boolean));
   const nowHour = new Date().getHours();
-  const todayKey = new Date().toISOString().split('T')[0];
+  const todayKey = localDateStr();
 
   // Helper: open analyse screen with slot + date pre-filled
   function logAction(slot, dateKey) {
@@ -1907,7 +1916,7 @@ function contextToggleHTML() {
 
       <!-- Date: when was this eaten? (defaults to today, allows backdating) -->
       ${(() => {
-        const today = new Date().toISOString().split('T')[0];
+        const today = localDateStr();
         const isBackdated = state.mealDate && state.mealDate !== today;
         const label = isBackdated
           ? new Date(state.mealDate + 'T12:00:00').toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'short'})
