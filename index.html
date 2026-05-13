@@ -3093,6 +3093,22 @@ render(); // show loading spinner immediately
 
 sb.auth.onAuthStateChange(async (event, session) => {
   if (session) {
+    // TOKEN_REFRESHED fires whenever the tab regains focus — Supabase silently
+    // refreshes the JWT in the background. We must NOT re-run the screen routing
+    // logic in that case, because it would overwrite the user's current in-memory
+    // state (including photos, form fields, etc.) and send them to home.
+    // Only do full boot logic on the initial load (screen === 'loading').
+    const isInitialLoad = state.screen === 'loading';
+
+    // Always keep the session token fresh in state
+    state.user    = session.user;
+    state.session = session;
+
+    if (!isInitialLoad) {
+      // Tab focus / token refresh — just update the token, leave everything else alone
+      return;
+    }
+
     let profile = JSON.parse(localStorage.getItem('wise_profile') || 'null');
 
     // If no local profile, try loading from Supabase (e.g. new device / cleared storage)
