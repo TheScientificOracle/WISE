@@ -315,26 +315,30 @@ function setState(patch) {
 
 function saveSessionState() {
   try {
-    // photoDataUrls excluded — base64 images can exceed localStorage's ~5MB limit
-    // causing a silent save failure. The analysis result is what matters on restore.
+    // Only save lightweight navigation context — NOT analysisResult or viewingLog.
+    // Those objects (full ingredient JSON + photo_data_url) can exceed the ~5MB
+    // localStorage quota, causing setItem to throw. The catch block would silently
+    // swallow the error, leaving a stale savedSession that routes to home on reload.
+    // Results are already in Supabase; the analyse form fields are what matters.
+    //
+    // Screens that depend on large in-memory objects (results, ambiguousResult)
+    // restore as 'home' — the user can re-navigate from there.
+    const restorableScreen = ['home','gaps','profile','analyse','fuel','fuelResults'].includes(state.screen)
+      ? state.screen : 'home';
     localStorage.setItem('wise_session', JSON.stringify({
-      screen: state.screen,
-      analysisResult: state.analysisResult,
-      analyseTab: state.analyseTab,
-      mealText: state.mealText,
-      mealContext: state.mealContext,
-      restaurantName: state.restaurantName,
+      screen:           restorableScreen,
+      analyseTab:       state.analyseTab,
+      mealText:         state.mealText,
+      mealContext:      state.mealContext,
+      mealSlot:         state.mealSlot,
+      mealDate:         state.mealDate,
+      restaurantName:   state.restaurantName,
       restaurantLocation: state.restaurantLocation,
-      viewingLog: state.viewingLog,
-      fuelPlan: state.fuelPlan,
-      fuelActivity: state.fuelActivity,
-      fuelEffort: state.fuelEffort,
-      fuelWhen: state.fuelWhen,
-      fuelMeals: state.fuelMeals,
-      ingredientsVerified: state.ingredientsVerified,
-      ingredientsExpanded: state.ingredientsExpanded,
-      mealSlot: state.mealSlot,
       photoDescription: state.photoDescription,
+      fuelActivity:     state.fuelActivity,
+      fuelEffort:       state.fuelEffort,
+      fuelWhen:         state.fuelWhen,
+      fuelMeals:        state.fuelMeals,
     }));
   } catch(e) {}
 }
