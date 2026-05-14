@@ -1875,12 +1875,7 @@ function renderHome() {
     <div class="card" style="margin-bottom:10px;padding:0;overflow:hidden">
       <button onclick="setState({screen:'gaps',gapsDate:null})" style="display:flex;align-items:center;gap:12px;padding:14px 18px;background:none;border:none;width:100%;text-align:left;cursor:pointer">
         <div style="flex:1;min-width:0">
-          <div style="font-size:15px;font-weight:600;margin-bottom:2px">What you should eat</div>
-          <div style="font-size:12px;color:var(--muted)">
-            ${problems.length === 0
-              ? 'All macros on track — great work'
-              : problems.map(g => g.label.replace(' Gap','').toLowerCase()).join(' & ') + ' gap' + (problems.length > 1 ? 's' : '')}
-          </div>
+          <div style="font-size:15px;font-weight:600">What you should eat</div>
         </div>
         ${problems.length > 0
           ? `<div style="font-size:11px;font-weight:700;font-family:monospace;padding:3px 10px;border-radius:99px;background:#fffbeb;color:#d97706;flex-shrink:0;white-space:nowrap">${problems.length} gap${problems.length>1?'s':''}</div>`
