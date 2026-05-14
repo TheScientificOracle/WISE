@@ -1309,7 +1309,8 @@ function fatSubtypeRow(subtypeKey, label, value, totalFat, color, todayLogs) {
   if (value <= 0) return '';
   const isOpen = state.gapsExpandedFatSubtype === subtypeKey;
   const pct    = totalFat > 0 ? Math.min(Math.round(value / totalFat * 100), 100) : 0;
-  const contribs = getMacroContributors(todayLogs, subtypeKey).slice(0, 5);
+  const per100Key = { sat: 'sat_fat', mono: 'mono_fat', poly: 'poly_fat' }[subtypeKey] || subtypeKey;
+  const contribs = getMacroContributors(todayLogs, per100Key).slice(0, 5);
   return `
     <div style="margin-bottom:6px">
       <button onclick="setState({gapsExpandedFatSubtype:state.gapsExpandedFatSubtype==='${subtypeKey}'?null:'${subtypeKey}'})"
