@@ -1774,7 +1774,7 @@ function renderHome() {
   const rdas = getMicroRDAs(p);
   const MICRO_LABELS = { vitamin_d:'Vitamin D', iron:'Iron', zinc:'Zinc', magnesium:'Magnesium', b12:'B12', calcium:'Calcium', potassium:'Potassium' };
   const lowMicros = Object.entries(rdas)
-    .filter(([key, rda]) => rda > 0 && (running[key] / rda) * 100 < 40)
+    .filter(([key, rda]) => rda > 0 && (running[key] / rda) * 100 < 60)
     .map(([key]) => MICRO_LABELS[key]);
 
   // ── Today's meals list ────────────────────────────────────────────────────
