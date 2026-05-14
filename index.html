@@ -290,7 +290,7 @@ const state = {
   mealDate: localDateStr(), // YYYY-MM-DD, defaults to today (local time), backdatable
   photoDescription: '',        // optional one-line hint sent alongside photo
   gapsExpandedMacro: null,     // 'cal' | 'protein' | 'fat' | 'carbs' | 'fibre' | null — clickable bars
-  gapsExpandedFatSubtype: null, // 'sat' | 'mono' | 'poly' | null — second level inside fat bar
+  gapsExpandedFatSubtype: [],   // array of open subtype keys — 'sat' | 'mono' | 'poly'
   gapsExpandedMicro: null,     // micronutrient key | null — tap to see ingredient contributors
   gapsDate: null,              // YYYY-MM-DD | null — null means today; set when viewing a past day's gaps
   pwFeature: null,
@@ -1265,7 +1265,7 @@ function clickableTrackerBar(macroKey, label, value, target, color, unit, contri
       ${isOpen ? `
       <div style="margin-top:8px;background:#f9fafb;border-radius:10px;padding:10px 12px">
         ${topContribs.length === 0
-          ? `<div style="font-size:12px;color:var(--muted);font-style:italic">No meal data logged yet.</div>`
+          ? ``
           : topContribs.map((c, i) => {
               const barW = Math.round((c.val / (topContribs[0]?.val || 1)) * 100);
               return `
@@ -1304,16 +1304,22 @@ function getMacroContributors(todayLogs, macroKey) {
   return Object.values(merged).sort((a, b) => b.val - a.val);
 }
 
+function toggleFatSubtype(key) {
+  const arr = state.gapsExpandedFatSubtype || [];
+  const next = arr.includes(key) ? arr.filter(k => k !== key) : [...arr, key];
+  setState({ gapsExpandedFatSubtype: next });
+}
+
 // ─── Fat subtype bar (second level inside fat bar) ───────────────────────────
 function fatSubtypeRow(subtypeKey, label, value, totalFat, color, todayLogs) {
   if (value <= 0) return '';
-  const isOpen = state.gapsExpandedFatSubtype === subtypeKey;
+  const isOpen = (state.gapsExpandedFatSubtype || []).includes(subtypeKey);
   const pct    = totalFat > 0 ? Math.min(Math.round(value / totalFat * 100), 100) : 0;
   const per100Key = { sat: 'sat_fat', mono: 'mono_fat', poly: 'poly_fat' }[subtypeKey] || subtypeKey;
   const contribs = getMacroContributors(todayLogs, per100Key).slice(0, 5);
   return `
     <div style="margin-bottom:6px">
-      <button onclick="setState({gapsExpandedFatSubtype:state.gapsExpandedFatSubtype==='${subtypeKey}'?null:'${subtypeKey}'})"
+      <button onclick="toggleFatSubtype('${subtypeKey}')"
         style="width:100%;background:none;border:none;padding:6px 10px;cursor:pointer;text-align:left;border-radius:8px;background:rgba(0,0,0,0.02)">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
           <div style="display:flex;align-items:center;gap:6px">
