@@ -282,6 +282,7 @@ const state = {
   editFetching: false,
   homeTargetsExpanded: false,  // "how did we get here?" on home screen
   mealSaveError: null,         // set if saveMealLog insert fails
+  currentLogId: null,          // id of the last saved meal_logs row — used to UPDATE on edit
   ingredientsVerified: null,   // null | 'yes' | 'no'
   ingredientsExpanded: false,
   ingredientRows: [{name:'',qty:'',unit:'g'},{name:'',qty:'',unit:'g'},{name:'',qty:'',unit:'g'},{name:'',qty:'',unit:'g'}],
@@ -290,6 +291,8 @@ const state = {
   photoDescription: '',        // optional one-line hint sent alongside photo
   gapsExpandedMacro: null,     // 'cal' | 'protein' | 'fat' | 'carbs' | 'fibre' | null — clickable bars
   gapsExpandedFatSubtype: null, // 'sat' | 'mono' | 'poly' | null — second level inside fat bar
+  gapsExpandedMicro: null,     // micronutrient key | null — tap to see ingredient contributors
+  gapsDate: null,              // YYYY-MM-DD | null — null means today; set when viewing a past day's gaps
   pwFeature: null,
   assumptionsExpanded: false,
   fuelActivity: 'strength',
@@ -441,7 +444,7 @@ async function saveMealLog(result) {
       return new Date(state.mealDate + 'T12:00:00').toISOString();
     })();
 
-    const { error } = await sb.from('meal_logs').insert({
+    const { data: inserted, error } = await sb.from('meal_logs').insert({
       user_id:         state.user.id,
       input_type:      state.analyseTab,
       meal_context:    state.mealContext,
@@ -453,12 +456,31 @@ async function saveMealLog(result) {
       totals:          { cal: totals.cal, protein: totals.protein, fat: totals.fat, sat_fat: totals.sat_fat, poly_fat: totals.poly_fat, mono_fat: totals.mono_fat, carbs: totals.carbs, fibre: totals.fibre, vitamin_d: totals.vitamin_d, iron: totals.iron, zinc: totals.zinc, magnesium: totals.magnesium, b12: totals.b12, calcium: totals.calcium, potassium: totals.potassium },
       context:         state.mealSlot ? { slot: state.mealSlot } : null,
       logged_at:       loggedAt,
-    });
+    }).select('id').single();
     if (error) throw error;
+    // Store the new log's ID so edits on the results screen can UPDATE the same record
+    if (inserted?.id) setState({ currentLogId: inserted.id });
     loadMealLogs(); // refresh home screen list without awaiting
   } catch(e) {
     console.warn('saveMealLog failed:', e?.message || e);
     setState({ mealSaveError: e?.message || 'Meal could not be saved.' });
+  }
+}
+
+// Updates the stored meal record after ingredient edits on the results screen
+async function updateMealLog(identified) {
+  const logId = state.viewingLog?.id || state.currentLogId;
+  if (!logId || !state.user) return;
+  const totals = totalsFrom(identified);
+  try {
+    const { error } = await sb.from('meal_logs').update({
+      meal_data: identified,
+      totals: { cal: totals.cal, protein: totals.protein, fat: totals.fat, sat_fat: totals.sat_fat, poly_fat: totals.poly_fat, mono_fat: totals.mono_fat, carbs: totals.carbs, fibre: totals.fibre, vitamin_d: totals.vitamin_d, iron: totals.iron, zinc: totals.zinc, magnesium: totals.magnesium, b12: totals.b12, calcium: totals.calcium, potassium: totals.potassium },
+    }).eq('id', logId);
+    if (error) throw error;
+    loadMealLogs(); // refresh so home + gaps screens see the corrected numbers
+  } catch(e) {
+    console.warn('updateMealLog failed:', e?.message || e);
   }
 }
 
@@ -1385,29 +1407,52 @@ function renderMicronutrientsL1(todayLogs, profile) {
     ${todayLogs.length < 2 && !hasAnyData
       ? `<div style="text-align:center;padding:16px 0;font-size:13px;color:var(--muted)">Log at least 2 meals to see micronutrient coverage</div>`
       : order.map(key => {
-          const meta  = MICRO_META[key];
-          const rda   = rdas[key];
-          const val   = totals[key];
-          const pct   = rda > 0 ? Math.min(Math.round(val / rda * 100), 100) : 0;
-          const color = pct >= 75 ? '#16a34a' : pct >= 40 ? '#d97706' : '#dc2626';
-          const band  = pct >= 75 ? 'good' : pct >= 40 ? 'low' : 'very low';
-          const valStr = val.toFixed(meta.decimals);
-          const rdaStr = rda % 1 === 0 ? rda : rda.toFixed(1);
+          const meta     = MICRO_META[key];
+          const rda      = rdas[key];
+          const val      = totals[key];
+          const pct      = rda > 0 ? Math.min(Math.round(val / rda * 100), 100) : 0;
+          const color    = pct >= 75 ? '#16a34a' : pct >= 40 ? '#d97706' : '#dc2626';
+          const band     = pct >= 75 ? 'GOOD' : pct >= 40 ? 'LOW' : 'VERY LOW';
+          const valStr   = val.toFixed(meta.decimals);
+          const rdaStr   = rda % 1 === 0 ? rda : rda.toFixed(1);
+          const isOpen   = state.gapsExpandedMicro === key;
+          const contribs = getMacroContributors(todayLogs, key).slice(0, 5);
           return `
-          <div style="margin-bottom:10px">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
-              <div style="display:flex;align-items:center;gap:5px">
-                <span style="font-size:13px">${meta.emoji}</span>
-                <span style="font-size:12px;color:#374151;font-weight:500">${meta.label}</span>
+          <div style="margin-bottom:${isOpen ? '4px' : '10px'}">
+            <button onclick="setState({gapsExpandedMicro:state.gapsExpandedMicro==='${key}'?null:'${key}'})"
+              style="width:100%;background:none;border:none;padding:0;cursor:pointer;text-align:left">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+                <div style="display:flex;align-items:center;gap:5px">
+                  <span style="font-size:13px">${meta.emoji}</span>
+                  <span style="font-size:12px;color:#374151;font-weight:500">${meta.label}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px">
+                  <span style="font-size:10px;font-family:monospace;color:${color};background:${color}18;padding:1px 6px;border-radius:99px;text-transform:uppercase;font-weight:600">${band}</span>
+                  <span style="font-size:11px;font-family:monospace;color:var(--subtle)">${valStr}/${rdaStr}${meta.unit}</span>
+                  <span style="font-size:9px;color:var(--muted)">${isOpen ? '▲' : '▼'}</span>
+                </div>
               </div>
-              <div style="display:flex;align-items:center;gap:6px">
-                <span style="font-size:10px;font-family:monospace;color:${color};background:${color}18;padding:1px 6px;border-radius:99px;text-transform:uppercase;font-weight:600">${band}</span>
-                <span style="font-size:11px;font-family:monospace;color:var(--subtle)">${valStr}/${rdaStr}${meta.unit}</span>
+              <div style="height:4px;background:#e5e7eb;border-radius:99px">
+                <div style="height:100%;width:${pct}%;background:${color};border-radius:99px;transition:width 0.3s"></div>
               </div>
-            </div>
-            <div style="height:4px;background:#e5e7eb;border-radius:99px">
-              <div style="height:100%;width:${pct}%;background:${color};border-radius:99px;transition:width 0.3s"></div>
-            </div>
+            </button>
+            ${isOpen ? `
+            <div style="margin:6px 0 10px;padding:8px 10px;background:#f9fafb;border-radius:8px;border:1px solid #f3f4f6">
+              <div class="mono" style="font-size:10px;color:var(--muted);margin-bottom:6px;letter-spacing:.06em">TOP SOURCES TODAY</div>
+              ${contribs.length > 0 ? contribs.map(c => {
+                const cPct = val > 0 ? Math.round(c.val / val * 100) : 0;
+                return `
+                <div style="margin-bottom:5px">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+                    <span style="font-size:11px;color:#374151;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:8px">${c.name}</span>
+                    <span style="font-size:10px;font-family:monospace;color:var(--subtle);white-space:nowrap">${c.val.toFixed(meta.decimals)}${meta.unit} (${cPct}%)</span>
+                  </div>
+                  <div style="height:3px;background:#e5e7eb;border-radius:99px">
+                    <div style="height:100%;width:${Math.min(cPct,100)}%;background:${color};border-radius:99px;opacity:0.6"></div>
+                  </div>
+                </div>`;
+              }).join('') : `<div style="font-size:12px;color:var(--muted);font-style:italic">No ingredient-level data yet</div>`}
+            </div>` : ''}
           </div>`;
         }).join('')}
     </div>
@@ -1594,7 +1639,7 @@ function renderRecentMeals() {
     const loggedDaySlots = new Set(logs.map(({ log }) => log.context?.slot).filter(Boolean));
     const missingSlotHTML = isIncomplete
       ? ['breakfast','lunch','dinner'].filter(s => !loggedDaySlots.has(s)).map(slot => {
-          const addAction = `setState({screen:'analyse',analyseTab:'photo',photoDataUrls:[],mealText:'',mealContext:null,restaurantName:'',restaurantLocation:'',mealSlot:'${slot}',mealDate:'${key}',photoDescription:'',analysisResult:null,analysisError:null,analysing:false,viewingLog:null,mealSaveError:null})`;
+          const addAction = `setState({screen:'analyse',analyseTab:'photo',photoDataUrls:[],mealText:'',mealContext:null,restaurantName:'',restaurantLocation:'',mealSlot:'${slot}',mealDate:'${key}',photoDescription:'',analysisResult:null,analysisError:null,analysing:false,viewingLog:null,mealSaveError:null,currentLogId:null})`;
           return `<div style="display:flex;align-items:stretch;background:white;border:1px dashed #d1d5db;border-radius:14px;margin-bottom:8px;overflow:hidden">
             <div style="flex:1;display:flex;align-items:center;gap:12px;padding:12px 14px;min-width:0">
               <div style="width:48px;height:48px;border-radius:8px;background:#f9fafb;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;opacity:.5">${HIST_SLOT_EMOJI[slot]}</div>
@@ -1609,11 +1654,16 @@ function renderRecentMeals() {
       : '';
 
     return `<div style="margin-bottom:4px">
-      <button onclick="var el=document.getElementById('${listId}'),o=el.style.display!=='none';el.style.display=o?'none':'';this.querySelector('.chev').textContent=o?'▼':'▲'" style="width:100%;display:flex;align-items:center;gap:8px;background:none;border:none;border-bottom:1px solid var(--border);padding:8px 2px;margin-bottom:8px;cursor:pointer;text-align:left">
-        <span style="font-size:11px;font-family:'SF Mono',monospace;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);">${label}</span>
-        ${isIncomplete ? `<span style="font-size:9px;font-family:monospace;font-weight:700;padding:2px 6px;border-radius:99px;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;letter-spacing:.04em">INCOMPLETE</span>` : ''}
-        <span class="chev" style="font-size:9px;color:var(--muted);margin-left:auto">▼</span>
-      </button>
+      <div style="display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--border);padding:6px 2px;margin-bottom:8px">
+        <button onclick="setState({screen:'gaps',gapsDate:'${key}',gapsExpandedMacro:null,gapsExpandedMicro:null})" style="flex:1;display:flex;align-items:center;gap:8px;background:none;border:none;padding:0;cursor:pointer;text-align:left">
+          <span style="font-size:11px;font-family:'SF Mono',monospace;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);">${label}</span>
+          ${isIncomplete ? `<span style="font-size:9px;font-family:monospace;font-weight:700;padding:2px 6px;border-radius:99px;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;letter-spacing:.04em">INCOMPLETE</span>` : ''}
+          <span style="font-size:9px;color:var(--muted);opacity:0.5">📊</span>
+        </button>
+        <button onclick="var el=document.getElementById('${listId}'),o=el.style.display!=='none';el.style.display=o?'none':'';this.querySelector('.chev').textContent=o?'▼':'▲'" style="background:none;border:none;padding:4px 6px;cursor:pointer;flex-shrink:0">
+          <span class="chev" style="font-size:9px;color:var(--muted)">▼</span>
+        </button>
+      </div>
       <div id="${listId}" style="display:none">${mealsHTML}${missingSlotHTML}</div>
     </div>`;
   }).join('');
@@ -1625,7 +1675,7 @@ function renderRecentMeals() {
 function renderTabBar(activeTab) {
   // activeTab: 'today' | 'profile'
   // The elevated Log button always triggers the analyse flow
-  const logAction = `setState({screen:'analyse',analyseTab:'photo',photoDataUrls:[],mealText:'',mealContext:null,restaurantName:'',restaurantLocation:'',mealSlot:null,mealDate:localDateStr(),photoDescription:'',analysisResult:null,analysisError:null,analysing:false,viewingLog:null,mealSaveError:null})`;
+  const logAction = `setState({screen:'analyse',analyseTab:'photo',photoDataUrls:[],mealText:'',mealContext:null,restaurantName:'',restaurantLocation:'',mealSlot:null,mealDate:localDateStr(),photoDescription:'',analysisResult:null,analysisError:null,analysing:false,viewingLog:null,mealSaveError:null,currentLogId:null})`;
   return `
     <div class="nav-spacer"></div>
     <div class="nav-bar-wrap">
@@ -1721,7 +1771,7 @@ function renderHome() {
   // Helper: open analyse screen with slot + date pre-filled
   function logAction(slot, dateKey) {
     const s = slot ? `'${slot}'` : 'null';
-    return `setState({screen:'analyse',analyseTab:'photo',photoDataUrls:[],mealText:'',mealContext:null,restaurantName:'',restaurantLocation:'',mealSlot:${s},mealDate:'${dateKey}',photoDescription:'',analysisResult:null,analysisError:null,analysing:false,viewingLog:null,mealSaveError:null})`;
+    return `setState({screen:'analyse',analyseTab:'photo',photoDataUrls:[],mealText:'',mealContext:null,restaurantName:'',restaurantLocation:'',mealSlot:${s},mealDate:'${dateKey}',photoDescription:'',analysisResult:null,analysisError:null,analysing:false,viewingLog:null,mealSaveError:null,currentLogId:null})`;
   }
 
   // Build meal rows — same card style as history
@@ -1807,7 +1857,7 @@ function renderHome() {
     <!-- What you should eat + micronutrients — only when meals have been logged today -->
     ${todayLogs.length > 0 ? `
     <div class="card" style="margin-bottom:10px;padding:0;overflow:hidden">
-      <button onclick="setState({screen:'gaps'})" style="display:flex;align-items:center;gap:12px;padding:14px 18px;background:none;border:none;width:100%;text-align:left;cursor:pointer">
+      <button onclick="setState({screen:'gaps',gapsDate:null})" style="display:flex;align-items:center;gap:12px;padding:14px 18px;background:none;border:none;width:100%;text-align:left;cursor:pointer">
         <div style="flex:1;min-width:0">
           <div style="font-size:15px;font-weight:600;margin-bottom:2px">What you should eat</div>
           <div style="font-size:12px;color:var(--muted)">
@@ -1824,7 +1874,7 @@ function renderHome() {
     </div>
     ${lowMicros.length > 0 ? `
     <div class="card" style="margin-bottom:10px;padding:0;overflow:hidden">
-      <button onclick="setState({screen:'gaps'})" style="display:flex;align-items:center;gap:12px;padding:14px 18px;background:none;border:none;width:100%;text-align:left;cursor:pointer">
+      <button onclick="setState({screen:'gaps',gapsDate:null})" style="display:flex;align-items:center;gap:12px;padding:14px 18px;background:none;border:none;width:100%;text-align:left;cursor:pointer">
         <div style="flex:1;min-width:0">
           <div style="font-size:15px;font-weight:600;margin-bottom:2px">Micronutrients</div>
           <div style="font-size:12px;color:var(--muted)">${lowMicros.slice(0,3).join(', ')} low</div>
@@ -2476,7 +2526,10 @@ function renderResults() {
     <!-- Logging nudge / timestamp -->
     ${!state.viewingLog ? `
     ${state.mealSaveError
-      ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:12px 16px;margin-bottom:12px;font-size:12px;color:#dc2626;line-height:1.5">⚠️ Couldn't save this meal: ${state.mealSaveError}</div>`
+      ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:12px 16px;margin-bottom:12px;line-height:1.5">
+          <p style="font-size:12px;color:#dc2626;margin:0 0 8px">⚠️ Couldn't save this meal: ${state.mealSaveError}</p>
+          <button onclick="setState({mealSaveError:null});saveMealLog(state.analysisResult);" style="background:#dc2626;color:white;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">↺ Retry save</button>
+        </div>`
       : `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:12px 16px;margin-bottom:12px;display:flex;gap:10px;align-items:center">
       <span style="font-size:18px;flex-shrink:0">📊</span>
       <div>
@@ -2708,8 +2761,13 @@ function renderGaps() {
   const targets    = calcTargets(state.profile);
   const todayStr   = new Date().toDateString();
 
-  // Filter mealLogs to today only
-  const todayLogs  = state.mealLogs.filter(log => log.logged_at && new Date(log.logged_at).toDateString() === todayStr);
+  // If gapsDate is set, show that past day; otherwise show today
+  const viewingDate   = state.gapsDate ? new Date(state.gapsDate + 'T12:00:00') : new Date();
+  const viewingStr    = viewingDate.toDateString();
+  const isViewingToday = viewingStr === todayStr;
+
+  // Filter mealLogs to the viewed date
+  const todayLogs  = state.mealLogs.filter(log => log.logged_at && new Date(log.logged_at).toDateString() === viewingStr);
 
   // Sum running totals
   const running = todayLogs.reduce((acc, log) => {
@@ -2736,21 +2794,28 @@ function renderGaps() {
   const gaps   = getGaps(running, targets);
   const calPct = targets.cal > 0 ? Math.round(running.cal / targets.cal * 100) : 0;
   const goal   = { fuel:'Performance', muscle:'Build Muscle', fat:'Lose Fat', recomp:'Recomposition' }[state.profile.goal];
-  const dateLabel = new Date().toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' });
+  const isYest = viewingDate.toDateString() === new Date(Date.now() - 86400000).toDateString();
+  const dateLabel = isViewingToday
+    ? viewingDate.toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' })
+    : isYest ? 'Yesterday'
+    : viewingDate.toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' });
 
   return `
-    <button class="btn-back" onclick="setState({screen:'home'})">← Back</button>
+    <button class="btn-back" onclick="setState({screen:'home',gapsDate:null})">← Back</button>
 
     <div style="margin-bottom:20px">
       <div class="mono" style="font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px">🔍 Daily Gap Analysis</div>
       <h2 style="font-size:26px;font-weight:600;letter-spacing:-.03em;line-height:1.2">Check my gaps</h2>
-      <p style="font-size:13px;color:var(--subtle);margin-top:4px">${dateLabel}</p>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:4px;flex-wrap:wrap">
+        <p style="font-size:13px;color:var(--subtle);margin:0">${dateLabel}</p>
+        ${!isViewingToday ? `<button onclick="setState({screen:'gaps',gapsDate:null,gapsExpandedMacro:null,gapsExpandedMicro:null})" style="font-size:11px;font-family:monospace;font-weight:600;padding:3px 10px;border-radius:99px;background:#f3f4f6;color:var(--muted);border:1px solid var(--border);cursor:pointer">← Today</button>` : ''}
+      </div>
     </div>
 
     <!-- Running totals vs targets -->
     <div class="card" style="margin-bottom:12px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-        <div class="label" style="margin-bottom:0">Today so far</div>
+        <div class="label" style="margin-bottom:0">${isViewingToday ? 'Today so far' : 'Day total'}</div>
         <div class="mono" style="font-size:11px;color:${calPct > 105 ? '#dc2626' : calPct > 80 ? '#d97706' : 'var(--muted)'}">${calPct}% of target · ${goal}</div>
       </div>
       ${clickableTrackerBar('cal',     'Calories', running.cal,     targets.cal,     '#374151',       ' kcal', getMacroContributors(todayLogs, 'cal'))}
@@ -2767,6 +2832,12 @@ function renderGaps() {
       </div>` : ''}
       ${clickableTrackerBar('fibre',   'Fibre',    running.fibre,   targets.fibre,   'var(--fibre)',   'g',     getMacroContributors(todayLogs, 'fibre'))}
     </div>
+
+    <!-- Micronutrients L1 (today) -->
+    ${renderMicronutrientsL1(todayLogs, state.profile)}
+
+    <!-- Micronutrients L2 (weekly pattern — activates after 7 meals / 3 days) -->
+    ${renderMicronutrientsL2(state.mealLogs, state.profile)}
 
     <!-- Gap recommendations -->
     <div class="card" style="margin-bottom:12px">
@@ -2786,12 +2857,6 @@ function renderGaps() {
           </div>`).join('') : `<p style="font-size:13px;color:#16a34a;margin:0">✓ You're hitting your macro targets today — great work.</p>`}
       </div>
     </div>
-
-    <!-- Micronutrients L1 (today) -->
-    ${renderMicronutrientsL1(todayLogs, state.profile)}
-
-    <!-- Micronutrients L2 (weekly pattern — activates after 7 meals / 3 days) -->
-    ${renderMicronutrientsL2(state.mealLogs, state.profile)}
 
     <!-- Slot-based meal view -->
     ${(() => {
@@ -3036,16 +3101,19 @@ async function saveEditIngredient(idx) {
         per100: { cal: per100data.cal||0, protein: per100data.protein||0, fat: per100data.fat||0, carbs: per100data.carbs||0, fibre: per100data.fibre||0 } };
       const identified = state.analysisResult.identified.map((ing, i) => i === idx ? updated : ing);
       setState({ editingIdx: null, editFetching: false, analysisResult: { ...state.analysisResult, identified } });
+      updateMealLog(identified);
     } catch(err) {
       // Fallback: update name/grams, keep existing per100
       const updated = { ...item, name: newName, estimatedG: newGrams };
       const identified = state.analysisResult.identified.map((ing, i) => i === idx ? updated : ing);
       setState({ editingIdx: null, editFetching: false, analysisResult: { ...state.analysisResult, identified } });
+      updateMealLog(identified);
     }
   } else {
     const updated = { ...item, estimatedG: newGrams };
     const identified = state.analysisResult.identified.map((ing, i) => i === idx ? updated : ing);
     setState({ editingIdx: null, analysisResult: { ...state.analysisResult, identified } });
+    updateMealLog(identified);
   }
 }
 
@@ -3079,6 +3147,7 @@ function openMealLog(idx) {
 function deleteIngredient(idx) {
   const identified = state.analysisResult.identified.filter((_, i) => i !== idx);
   setState({ analysisResult: { ...state.analysisResult, identified }, expandedIdx: null, editingIdx: null });
+  updateMealLog(identified);
 }
 
 function saveCorrectedIngredients() {
@@ -3096,6 +3165,7 @@ function saveCorrectedIngredients() {
     expandedIdx: null,
     editingIdx: null,
   });
+  updateMealLog(identified);
 }
 
 function deleteCorrIngredient(idx) {
@@ -3107,6 +3177,7 @@ function deleteCorrIngredient(idx) {
     return { ...item, name: nameEl.value.trim() || item.name, estimatedG: parseInt(gramsEl?.value) || item.estimatedG };
   }).filter((_, i) => i !== idx);
   setState({ analysisResult: { ...state.analysisResult, identified } });
+  updateMealLog(identified);
 }
 
 function addCorrIngredient() {
