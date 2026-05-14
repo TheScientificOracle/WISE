@@ -264,7 +264,7 @@ const state = {
   authPassword: '',
   authError: null,
   authLoading: false,
-  profile: savedProfile || { weight: 75, height: 175, age: 30, sex: 'male', goal: 'fuel', activityLevel: 'moderate' },
+  profile: savedProfile || { weight: 75, height: 175, age: 30, sex: 'male', goal: 'fuel', activityLevel: 'moderate', location: '' },
   mealLogs: [],          // recent meals from Supabase
   mealLogsLoading: false,
   viewingLog: null,      // { result, photoDataUrl, analyseTab, mealContext, restaurantName, logged_at }
@@ -293,6 +293,9 @@ const state = {
   gapsExpandedFatSubtype: [],   // array of open subtype keys — 'sat' | 'mono' | 'poly'
   gapsExpandedMicro: null,     // micronutrient key | null — tap to see ingredient contributors
   gapsDate: null,              // YYYY-MM-DD | null — null means today; set when viewing a past day's gaps
+  shopList: null,              // shopping list result from wise-shop edge function
+  shopLoading: false,
+  shopError: null,
   pwFeature: null,
   assumptionsExpanded: false,
   fuelActivity: 'strength',
@@ -1141,6 +1144,11 @@ function renderProfile() {
             <button class="toggle ${p.sex==='female'?'active':''}" onclick="setSex('female')">Female</button>
           </div>
         </div>
+      </div>
+      <div class="field" style="margin-bottom:16px">
+        <label style="font-size:11px;font-family:monospace;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:6px">Location (city or country)</label>
+        <input type="text" id="p-location" value="${p.location || ''}" placeholder="e.g. London, UK" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;box-sizing:border-box">
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">Used for seasonal produce in your shopping list</div>
       </div>
       <div style="font-size:12px;color:var(--muted);background:#f9fafb;border-radius:8px;padding:9px 12px;margin-bottom:16px;line-height:1.5">
         Age and sex feed into your <strong style="color:var(--subtle)">Mifflin-St Jeor BMR</strong> — the calories your body burns at rest. Sex shifts BMR by ~166 kcal/day; age reduces it ~5 kcal/year. Both affect your calorie target and every macro gram derived from it.
@@ -2847,6 +2855,17 @@ function renderGaps() {
     <!-- Micronutrients L2 (weekly pattern — today only, not relevant for past days) -->
     ${isViewingToday ? renderMicronutrientsL2(state.mealLogs, state.profile) : ''}
 
+    <!-- Shopping list entry point — show when enough data exists -->
+    ${isViewingToday && state.mealLogs.length >= 5 ? `
+    <button onclick="generateShoppingList()" style="width:100%;display:flex;align-items:center;gap:12px;padding:14px 18px;background:#111;color:white;border:none;border-radius:16px;cursor:pointer;text-align:left;margin-bottom:12px">
+      <span style="font-size:22px">🛒</span>
+      <div style="flex:1">
+        <div style="font-size:14px;font-weight:600;margin-bottom:2px">Build my shopping list</div>
+        <div style="font-size:12px;color:#9ca3af">Based on your habits, gaps, and what's in season</div>
+      </div>
+      <span style="font-size:16px;color:#6b7280">→</span>
+    </button>` : ''}
+
     <!-- Gap recommendations — today only -->
     ${isViewingToday ? `
     <div class="card" style="margin-bottom:12px">
@@ -2959,6 +2978,143 @@ function renderGaps() {
     ${renderTabBar('today')}`;
 }
 
+// ─── Shopping list ────────────────────────────────────────────────────────────
+async function generateShoppingList() {
+  setState({ screen: 'shoppingList', shopList: null, shopError: null, shopLoading: true });
+
+  try {
+    // Aggregate ingredients from last 14 days
+    const cutoff = new Date(Date.now() - 14 * 86400000);
+    const recentLogs = state.mealLogs.filter(l => new Date(l.logged_at) >= cutoff);
+
+    const freq = {};
+    recentLogs.forEach(log => {
+      (log.meal_data || []).forEach(item => {
+        const key = item.name.toLowerCase().trim();
+        if (!freq[key]) freq[key] = { name: item.name, totalG: 0, count: 0 };
+        freq[key].totalG += item.estimatedG || 0;
+        freq[key].count += 1;
+      });
+    });
+    const ingredients = Object.values(freq).sort((a, b) => b.count - a.count);
+
+    // Build deficit list from weekly micronutrient pattern
+    const rdas = getMicroRDAs(state.profile);
+    const order = getMicroOrder(state.profile.goal);
+    const microTotals = {};
+    Object.keys(MICRO_META).forEach(k => { microTotals[k] = 0; });
+    const distinctDays = new Set(recentLogs.map(l => localDateStr(new Date(l.logged_at)))).size;
+    recentLogs.forEach(log => {
+      const t = log.totals || {};
+      Object.keys(MICRO_META).forEach(k => { microTotals[k] += t[k] || 0; });
+    });
+    const deficits = order.map(key => {
+      const avg = distinctDays > 0 ? microTotals[key] / distinctDays : 0;
+      const pct = rdas[key] > 0 ? Math.round(avg / rdas[key] * 100) : 100;
+      return { name: MICRO_META[key].label, key, pct };
+    }).filter(d => d.pct < 75);
+
+    const token = await getToken();
+    const res = await fetch('https://qpisyykqmivljpsqleul.supabase.co/functions/v1/wise-shop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        ingredients,
+        deficits,
+        goal: state.profile.goal,
+        location: state.profile.location || 'unknown',
+        dateToday: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
+      }),
+    });
+    if (!res.ok) throw new Error(`Server error ${res.status}`);
+    const list = await res.json();
+    if (list.error) throw new Error(list.error);
+    setState({ shopList: list, shopLoading: false });
+  } catch(e) {
+    setState({ shopError: e.message || 'Could not generate list', shopLoading: false });
+  }
+}
+
+function renderShoppingList() {
+  const SECTION_META = {
+    staples:  { label: 'Restock your staples',   emoji: '🔄', color: '#374151', bg: '#f9fafb', border: '#e5e7eb' },
+    fix:      { label: 'Fix your gaps',           emoji: '🎯', color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
+    discover: { label: 'Diversify your sources',  emoji: '🔀', color: '#7c3aed', bg: '#faf5ff', border: '#e9d5ff' },
+    seasonal: { label: 'In season now',           emoji: '🌱', color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
+  };
+
+  const copyAll = () => {
+    const list = state.shopList;
+    if (!list) return;
+    const lines = [];
+    Object.entries(SECTION_META).forEach(([key, meta]) => {
+      const items = list[key] || [];
+      if (!items.length) return;
+      lines.push(`${meta.emoji} ${meta.label.toUpperCase()}`);
+      items.forEach(i => lines.push(`• ${i.name} — ${i.qty}`));
+      lines.push('');
+    });
+    navigator.clipboard?.writeText(lines.join('\n')).catch(() => {});
+  };
+
+  if (state.shopLoading) return `
+    <button class="btn-back" onclick="setState({screen:'gaps'})">← Back</button>
+    <div style="text-align:center;padding:60px 16px">
+      <div style="font-size:36px;margin-bottom:16px">🛒</div>
+      <div style="font-size:15px;font-weight:500;margin-bottom:8px">Building your list…</div>
+      <div style="font-size:13px;color:var(--muted)">Checking what you eat, what you need, and what's in season.</div>
+    </div>
+    ${renderTabBar('today')}`;
+
+  if (state.shopError) return `
+    <button class="btn-back" onclick="setState({screen:'gaps'})">← Back</button>
+    <div style="text-align:center;padding:40px 16px">
+      <div style="font-size:13px;color:#dc2626;margin-bottom:16px">⚠️ ${state.shopError}</div>
+      <button class="btn-primary" onclick="generateShoppingList()">Try again</button>
+    </div>
+    ${renderTabBar('today')}`;
+
+  const list = state.shopList;
+  const totalItems = Object.values(list).flat().length;
+
+  return `
+    <button class="btn-back" onclick="setState({screen:'gaps'})">← Back</button>
+
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px">
+      <div>
+        <div class="mono" style="font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px">🛒 Weekly Shopping</div>
+        <h2 style="font-size:26px;font-weight:600;letter-spacing:-.03em;line-height:1.2">Your list</h2>
+        <p style="font-size:13px;color:var(--subtle);margin-top:4px">${totalItems} items · based on your last 14 days</p>
+      </div>
+      <button onclick="(${copyAll})()" style="font-size:12px;font-family:monospace;font-weight:600;padding:8px 14px;border-radius:10px;border:1.5px solid #111;background:white;color:#111;cursor:pointer;flex-shrink:0;margin-top:4px">Copy list</button>
+    </div>
+
+    ${Object.entries(SECTION_META).map(([key, meta]) => {
+      const items = list[key] || [];
+      if (!items.length) return '';
+      return `
+      <div class="card" style="margin-bottom:12px;border-color:${meta.border};background:${meta.bg}">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+          <span style="font-size:18px">${meta.emoji}</span>
+          <div class="label" style="margin-bottom:0;color:${meta.color}">${meta.label}</div>
+        </div>
+        ${items.map((item, i) => `
+        <div style="${i < items.length - 1 ? 'margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid ' + meta.border : ''}">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px">
+            <span style="font-size:14px;font-weight:500;color:#111">${item.name}</span>
+            <span style="font-size:12px;font-family:monospace;color:${meta.color};font-weight:600;white-space:nowrap;margin-left:8px">${item.qty}</span>
+          </div>
+          <div style="font-size:12px;color:var(--muted);line-height:1.4">${item.reason}</div>
+        </div>`).join('')}
+      </div>`;
+    }).join('')}
+
+    <button onclick="generateShoppingList()" class="btn-secondary" style="margin-bottom:12px">↺ Regenerate list</button>
+    <div class="mono" style="text-align:center;font-size:11px;color:#d1d5db;margin-bottom:8px">Based on USDA nutritional data · seasonal produce for ${state.profile.location || 'your region'}</div>
+
+    ${renderTabBar('today')}`;
+}
+
 function renderPaywall() {
   const isGap = state.pwFeature === 'gap';
   const features = [
@@ -2996,7 +3152,7 @@ function render() {
     profile: renderProfile, home: renderHome,
     analyse: renderAnalyse, results: renderResults, paywall: renderPaywall,
     fuel: renderFuel, fuelResults: renderFuelResults,
-    gaps: renderGaps,
+    gaps: renderGaps, shoppingList: renderShoppingList,
   };
   const fn = screens[state.screen];
   document.getElementById('app').innerHTML = fn ? fn() : '';
@@ -3041,19 +3197,21 @@ async function saveProfile() {
   const a = parseInt(document.getElementById('p-age')?.value);
   if (!w || !h || !a) { alert('Please fill in all fields.'); return; }
   // activityLevel and sex/goal are already set directly on state.profile via their buttons
-  state.profile.weight = w; state.profile.height = h; state.profile.age = a;
+  const loc = document.getElementById('p-location')?.value?.trim() || '';
+  state.profile.weight = w; state.profile.height = h; state.profile.age = a; state.profile.location = loc;
   localStorage.setItem('wise_profile', JSON.stringify(state.profile));
   // Sync to Supabase profiles table so profile persists across devices
   if (state.user) {
     try {
       await sb.from('profiles').upsert({
-        id:         state.user.id,
-        weight_kg:  w,
-        height_cm:  h,
-        age:        a,
-        sex:        state.profile.sex,
-        goal:       state.profile.goal,
-        updated_at: new Date().toISOString(),
+        id:           state.user.id,
+        weight_kg:    w,
+        height_cm:    h,
+        age:          a,
+        sex:          state.profile.sex,
+        goal:         state.profile.goal,
+        location:     loc || null,
+        updated_at:   new Date().toISOString(),
       }, { onConflict: 'id' });
     } catch(e) {
       console.warn('Profile sync to Supabase failed:', e?.message || e);
@@ -3234,7 +3392,7 @@ sb.auth.onAuthStateChange(async (event, session) => {
       try {
         const { data } = await sb.from('profiles').select('*').eq('id', session.user.id).single();
         if (data && data.weight_kg && data.height_cm && data.age) {
-          profile = { weight: data.weight_kg, height: data.height_cm, age: data.age, sex: data.sex || 'male', goal: data.goal || 'fuel' };
+          profile = { weight: data.weight_kg, height: data.height_cm, age: data.age, sex: data.sex || 'male', goal: data.goal || 'fuel', activityLevel: data.activity_level || 'moderate', location: data.location || '' };
           localStorage.setItem('wise_profile', JSON.stringify(profile));
           state.profile = profile;
         }
