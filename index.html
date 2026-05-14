@@ -1218,8 +1218,8 @@ function extractShortMealName(summary) {
   if (!summary) return null;
   // Strip the standard preamble
   const clean = summary.replace(/^This looks like (?:a |an )?/i, '').trim();
-  // Stop at "with", " and " used as a connector, commas, periods
-  const short = clean.split(/\s+with\s+|\s*,|\.\s*$|\s+and\s+a\s+/)[0].trim();
+  // Stop at connectors: "with", "consisting", "made", "and a", commas, periods
+  const short = clean.split(/\s+with\s+|\s+consisting\s+|\s+made\s+(?:with|from|of)\s+|\s*,|\.\s*$|\s+and\s+a\s+/i)[0].trim();
   // Limit to 5 words max
   const words = short.split(/\s+/).slice(0, 5).join(' ');
   if (!words || words.length < 3) return null;
@@ -1665,7 +1665,7 @@ function renderRecentMeals() {
         <button onclick="setState({screen:'gaps',gapsDate:'${key}',gapsExpandedMacro:null,gapsExpandedMicro:null})" style="flex:1;display:flex;align-items:center;gap:8px;background:none;border:none;padding:0;cursor:pointer;text-align:left">
           <span style="font-size:11px;font-family:'SF Mono',monospace;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);">${label}</span>
           ${isIncomplete ? `<span style="font-size:9px;font-family:monospace;font-weight:700;padding:2px 6px;border-radius:99px;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;letter-spacing:.04em">INCOMPLETE</span>` : ''}
-          <span style="font-size:9px;color:var(--muted);opacity:0.5">📊</span>
+          <span style="font-size:10px;font-family:monospace;color:#6b7280;padding:1px 7px;border-radius:99px;border:1px solid #e5e7eb;background:#f9fafb">View stats →</span>
         </button>
         <button onclick="var el=document.getElementById('${listId}'),o=el.style.display!=='none';el.style.display=o?'none':'';this.querySelector('.chev').textContent=o?'▼':'▲'" style="background:none;border:none;padding:4px 6px;cursor:pointer;flex-shrink:0">
           <span class="chev" style="font-size:9px;color:var(--muted)">▼</span>
@@ -1809,11 +1809,12 @@ function renderHome() {
   }).join('');
 
   // Unlogged slot placeholders — with "Add now" button
-  const showPlaceholders = ['breakfast','lunch','dinner'].filter(slot => {
+  const showPlaceholders = ['breakfast','lunch','dinner','snack'].filter(slot => {
     if (loggedSlots.has(slot)) return false;
     if (slot === 'breakfast') return nowHour >= 8;
     if (slot === 'lunch')     return nowHour >= 11;
     if (slot === 'dinner')    return nowHour >= 16;
+    if (slot === 'snack')     return nowHour >= 10; // available most of the day
   });
   const placeholderRows = showPlaceholders.map(slot => `
     <div style="display:flex;align-items:stretch;background:white;border:1px dashed #d1d5db;border-radius:14px;margin-bottom:8px;overflow:hidden">
@@ -2843,10 +2844,11 @@ function renderGaps() {
     <!-- Micronutrients L1 (today) -->
     ${renderMicronutrientsL1(todayLogs, state.profile)}
 
-    <!-- Micronutrients L2 (weekly pattern — activates after 7 meals / 3 days) -->
-    ${renderMicronutrientsL2(state.mealLogs, state.profile)}
+    <!-- Micronutrients L2 (weekly pattern — today only, not relevant for past days) -->
+    ${isViewingToday ? renderMicronutrientsL2(state.mealLogs, state.profile) : ''}
 
-    <!-- Gap recommendations -->
+    <!-- Gap recommendations — today only -->
+    ${isViewingToday ? `
     <div class="card" style="margin-bottom:12px">
       <button onclick="var c=document.getElementById('gaps-body'),o=c.style.display!=='none';c.style.display=o?'none':'';this.querySelector('.chev').textContent=o?'▼':'▲'" style="width:100%;display:flex;align-items:center;justify-content:space-between;background:none;border:none;padding:0;cursor:pointer;margin-bottom:2px;text-align:left">
         <div class="label" style="margin-bottom:0">What you should eat</div>
@@ -2863,7 +2865,7 @@ function renderGaps() {
             </div>
           </div>`).join('') : `<p style="font-size:13px;color:#16a34a;margin:0">✓ You're hitting your macro targets today — great work.</p>`}
       </div>
-    </div>
+    </div>` : ''}
 
     <!-- Slot-based meal view -->
     ${(() => {
@@ -2944,13 +2946,13 @@ function renderGaps() {
       }).join('');
       return `
       <div style="margin-bottom:12px">
-        <div class="label" style="margin-bottom:10px">Today's meals</div>
+        <div class="label" style="margin-bottom:10px">${isViewingToday ? "Today's meals" : 'Meals that day'}</div>
         ${slotRows}
         ${untaggedRows}
       </div>`;
     })()}
 
-    <button class="btn-primary" onclick="setState({screen:'fuel',fuelPlan:null,fuelError:null})">⚡ Plan the rest of my day →</button>
+    ${isViewingToday ? `<button class="btn-primary" onclick="setState({screen:'fuel',fuelPlan:null,fuelError:null})">⚡ Plan the rest of my day →</button>` : ''}
 
     <div class="mono" style="margin-top:16px;text-align:center;font-size:11px;color:#d1d5db">Values from USDA FoodData Central · Mifflin-St Jeor BMR</div>
 
