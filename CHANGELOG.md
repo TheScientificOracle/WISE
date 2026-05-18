@@ -1,5 +1,10 @@
 # WISE — Changelog
 
+## v4.4 — 2026-05-18
+
+### What changed
+- **Empty days in meal history** — The past 7 days always appear in the meal history, even if no meals were logged. Days with zero meals show a grey "EMPTY" badge (distinct from the orange "INCOMPLETE" badge for days with some meals but under 70% of calorie target). Previously, completely empty days were silently skipped, creating confusing gaps in the timeline.
+
 ## v4.3 — 2026-05-18
 
 ### What changed

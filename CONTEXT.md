@@ -1,7 +1,7 @@
 # WISE — Project Context
 _Handover file for new Claude sessions._
 
-**Last updated:** 2026-05-18 | **Current version:** v4.3
+**Last updated:** 2026-05-18 | **Current version:** v4.4
 
 ---
 

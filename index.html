@@ -1615,16 +1615,37 @@ function renderRecentMeals() {
     if (!groups[key]) groups[key] = { date: d, logs: [] };
     groups[key].logs.push({ log, i });
   });
-  const sortedKeys = Object.keys(groups).sort().reverse(); // newest first
+  // Build the full ordered key list: past 7 days (always shown) + any older logged days
+  const past7Keys = [];
+  for (let i = 1; i <= 7; i++) {
+    const d = new Date(todayMidnight); d.setDate(d.getDate() - i);
+    past7Keys.push(localDateStr(d));
+  }
+  const olderLoggedKeys = Object.keys(groups).filter(k => !past7Keys.includes(k) && k !== localDateStr(todayMidnight));
+  const allKeys = [...past7Keys, ...olderLoggedKeys.sort().reverse()];
 
   const targets = calcTargets(state.profile);
 
-  const groupsHTML = sortedKeys.map(key => {
-    const { date, logs } = groups[key];
-    const isToday = date.getTime() === todayMidnight.getTime();
-    const isYest  = date.getTime() === yesterdayMidnight.getTime();
+  const groupsHTML = allKeys.map(key => {
+    const group = groups[key];
+    const date = group ? group.date : (() => { const d = new Date(key + 'T12:00:00'); return d; })();
+    const logs = group ? group.logs : [];
+    const isToday = localDateStr(date) === localDateStr(todayMidnight);
+    const isYest  = localDateStr(date) === localDateStr(yesterdayMidnight);
     // Skip today — shown inline on home screen already
     if (isToday) return '';
+
+    // Empty day — no meals logged at all
+    if (!group) {
+      const label = isYest ? 'Yesterday'
+                  : date.toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' });
+      return `<div style="margin-bottom:4px">
+        <div style="display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--border);padding:6px 2px;margin-bottom:8px">
+          <span style="flex:1;font-size:11px;font-family:'SF Mono',monospace;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)">${label}</span>
+          <span style="font-size:9px;font-family:monospace;font-weight:700;padding:2px 6px;border-radius:99px;background:#f3f4f6;color:#9ca3af;border:1px solid #e5e7eb;letter-spacing:.04em">EMPTY</span>
+        </div>
+      </div>`;
+    }
     const label = isYest ? 'Yesterday'
                 : date.toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' });
     const listId = 'mg-' + key;
