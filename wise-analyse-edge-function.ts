@@ -333,12 +333,13 @@ Deno.serve(async (req) => {
         })
 
         if (labelUpdate) {
+          const eg = labelUpdate.estimatedG ?? item.estimatedG
           return {
             ...item,
             visibleInPhoto: true,
-            estimatedG: labelUpdate.estimatedG ?? item.estimatedG,
+            estimatedG: eg,
             per100: labelUpdate.per100 ?? item.per100,
-            reasoning: (item.reasoning as string || '') + ' [nutritional values from product label]',
+            reasoning: `Nutritional values read directly from product label in photo. Quantity: ${eg}g/ml based on user description.`,
           }
         }
 
