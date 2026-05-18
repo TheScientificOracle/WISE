@@ -282,7 +282,25 @@ Deno.serve(async (req) => {
         `The user described their meal. These items are already identified from their description:\n${describedList}\n\n` +
         `Look at this photo and do exactly THREE things:\n` +
         `1. "describedVisible" — list the names (exactly as written above) of described items you can see in the photo.\n` +
-        `2. "describedUpdates" — CRITICAL: If the photo shows a NUTRITION LABEL (a product package, bottle, tin, or box with printed nutritional information) for any described item, you MUST extract the exact per100 values from that label and include the item here. Also calculate the correct estimatedG from the user's quantity description (e.g. "half a bottle" of a 330ml bottle = 165g; "whole can" of 250ml = 250g; "one scoop" = use label serving size). This overrides the generic estimates from the description analysis. Only include items where you can read label data from the photo. Leave empty [] if no labels are visible.\n` +
+        `2. "describedUpdates" — LABEL READING (highest priority task):\n` +
+        `   Scan the photo carefully for any nutrition facts table on a product (bottle, tin, box, packet, carton).\n` +
+        `   If you find one, read the PER 100G or PER 100ML column (NOT the "per serving" or "per package" column — use per-100 values only).\n` +
+        `   Map label rows to JSON fields as follows:\n` +
+        `     "Energy" in kcal → "cal"  (if only kJ listed, divide by 4.184)\n` +
+        `     "Protein" → "protein"\n` +
+        `     "Fat" / "Fat, Total" / "Total Fat" → "fat"\n` +
+        `     "Saturated" / "Saturated Fat" / "Saturated Fatty Acids" → "sat_fat"\n` +
+        `     "Monounsaturated Fat" → "mono_fat"\n` +
+        `     "Polyunsaturated Fat" → "poly_fat"\n` +
+        `     "Carbohydrate" / "Carbohydrates" / "Total Carbohydrate" → "carbs"\n` +
+        `     "Fibre" / "Dietary Fibre" / "Fiber" → "fibre"\n` +
+        `     Leave vitamin_d, iron, zinc, magnesium, b12, calcium, potassium as 0 unless explicitly listed on the label.\n` +
+        `   Also calculate estimatedG from the user's quantity description:\n` +
+        `     "half a 330ml bottle" → 165   |   "whole can" → full package size   |   "one serving" → serving size g\n` +
+        `   EXAMPLE: label shows per 100ml: Energy 58kcal, Protein 7.3g, Fat 1.4g, Sat Fat 0.9g, Carbs 3.8g, Fibre 0g\n` +
+        `   → per100: {"cal":58,"protein":7.3,"fat":1.4,"sat_fat":0.9,"poly_fat":0,"mono_fat":0,"carbs":3.8,"fibre":0,"vitamin_d":0,"iron":0,"zinc":0,"magnesium":0,"b12":0,"calcium":0,"potassium":0}\n` +
+        `   Include this item in describedUpdates with the matching described-item name, your calculated estimatedG, and the per100 you read directly from the label.\n` +
+        `   Leave describedUpdates as [] ONLY if there is genuinely no readable nutrition label in the photo.\n` +
         `3. "additional" — identify any ingredients clearly visible in the photo that are NOT in the described list. Only include items you are reasonably confident about. Do NOT re-add anything already described.\n\n` +
         `User's original description (for quantity parsing): "${userNote}"\n\n` +
         `Return ONLY valid raw JSON:\n${PASS2_SCHEMA}`
@@ -290,7 +308,7 @@ Deno.serve(async (req) => {
       const pass2Raw = await callAnthropic(
         anthropicKey,
         [...images.map(imageContent), { type: 'text', text: pass2Prompt }],
-        3072
+        4096
       )
       const pass2 = parseJSON(pass2Raw)
 
