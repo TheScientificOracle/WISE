@@ -530,7 +530,9 @@ async function callAnalyse(payload) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `Server error ${res.status}`);
+    const msg = err.error || `Server error ${res.status}`;
+    if (res.status === 529 || msg.includes('529')) throw new Error('WISE is very popular right now — the AI is temporarily busy. Give it a moment and try again.');
+    throw new Error(msg);
   }
   return res.json();
 }
@@ -544,7 +546,9 @@ async function callFuel(payload) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `Server error ${res.status}`);
+    const msg = err.error || `Server error ${res.status}`;
+    if (res.status === 529 || msg.includes('529')) throw new Error('WISE is very popular right now — the AI is temporarily busy. Give it a moment and try again.');
+    throw new Error(msg);
   }
   return res.json();
 }
@@ -3021,9 +3025,15 @@ async function generateShoppingList() {
         dateToday: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
       }),
     });
-    if (!res.ok) throw new Error(`Server error ${res.status}`);
+    if (!res.ok) {
+      if (res.status === 529) throw new Error('WISE is very popular right now — the AI is temporarily busy. Give it a moment and try again.');
+      throw new Error(`Server error ${res.status}`);
+    }
     const list = await res.json();
-    if (list.error) throw new Error(list.error);
+    if (list.error) {
+      if (list.error.includes('529')) throw new Error('WISE is very popular right now — the AI is temporarily busy. Give it a moment and try again.');
+      throw new Error(list.error);
+    }
     setState({ shopList: list, shopLoading: false });
   } catch(e) {
     setState({ shopError: e.message || 'Could not generate list', shopLoading: false });
