@@ -1,5 +1,10 @@
 # WISE — Changelog
 
+## v4.3 — 2026-05-18
+
+### What changed
+- **Label reading in two-pass mode** — Pass 2 now includes a `describedUpdates` field. When the photo contains a nutrition label (a product bottle, tin, box, or package) for any described item, pass 2 extracts the exact per100 values from that label and calculates the correct `estimatedG` from the user's quantity description (e.g. "half a bottle" of a 330ml bottle → 165g). The merge step applies these label-sourced values over pass 1's generic text estimates. Items updated from a label have `[nutritional values from product label]` appended to their reasoning. This fixes the regression where described items like "half a bottle of this protein shake" received generic milk values instead of the values printed on the label in the photo.
+
 ## v4.2 — 2026-05-18
 
 ### What changed

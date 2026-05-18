@@ -40,6 +40,13 @@ const SINGLE_SCHEMA = `{
 
 const PASS2_SCHEMA = `{
   "describedVisible": ["exact item name from the described list that is visible in this photo"],
+  "describedUpdates": [
+    {
+      "name": "Exact item name from the described list (must match exactly)",
+      "estimatedG": 165,
+      "per100": { "cal": 0, "protein": 0, "fat": 0, "sat_fat": 0, "poly_fat": 0, "mono_fat": 0, "carbs": 0, "fibre": 0, "vitamin_d": 0, "iron": 0, "zinc": 0, "magnesium": 0, "b12": 0, "calcium": 0, "potassium": 0 }
+    }
+  ],
   "additional": [
     {
       "name": "Food name",
@@ -239,32 +246,60 @@ Deno.serve(async (req) => {
         .map((item, idx) => `${idx + 1}. ${item.name}`)
         .join('\n')
 
+      // Build quantity hints from description so pass 2 can calculate correct estimatedG
+      const quantityHints = describedItems
+        .map((item, idx) => `${idx + 1}. ${item.name} — user said: "${userNote}"`)
+        .join('\n')
+
       const pass2Prompt =
         `You are WISE — a nutrition analysis AI.\n\n` +
-        `The user described their meal. These items are already identified:\n${describedList}\n\n` +
-        `Look at this photo and do exactly two things:\n` +
+        `The user described their meal. These items are already identified from their description:\n${describedList}\n\n` +
+        `Look at this photo and do exactly THREE things:\n` +
         `1. "describedVisible" — list the names (exactly as written above) of described items you can see in the photo.\n` +
-        `2. "additional" — identify any ingredients clearly visible in the photo that are NOT in the described list. Only include items you are reasonably confident about. Do NOT re-add anything already described.\n\n` +
+        `2. "describedUpdates" — CRITICAL: If the photo shows a NUTRITION LABEL (a product package, bottle, tin, or box with printed nutritional information) for any described item, you MUST extract the exact per100 values from that label and include the item here. Also calculate the correct estimatedG from the user's quantity description (e.g. "half a bottle" of a 330ml bottle = 165g; "whole can" of 250ml = 250g; "one scoop" = use label serving size). This overrides the generic estimates from the description analysis. Only include items where you can read label data from the photo. Leave empty [] if no labels are visible.\n` +
+        `3. "additional" — identify any ingredients clearly visible in the photo that are NOT in the described list. Only include items you are reasonably confident about. Do NOT re-add anything already described.\n\n` +
+        `User's original description (for quantity parsing): "${userNote}"\n\n` +
         `Return ONLY valid raw JSON:\n${PASS2_SCHEMA}`
 
       const pass2Raw = await callAnthropic(
         anthropicKey,
         [...images.map(imageContent), { type: 'text', text: pass2Prompt }],
-        2048
+        3072
       )
       const pass2 = parseJSON(pass2Raw)
 
-      // Update visibleInPhoto on described items
+      // Update visibleInPhoto on described items + apply label-based describedUpdates
       const visibleNames = ((pass2.describedVisible || []) as string[]).map((n: string) => n.toLowerCase())
-      const finalDescribed = describedItems.map(item => ({
-        ...item,
-        visibleInPhoto: visibleNames.some((vn: string) => {
-          const iName = (item.name as string).toLowerCase()
+      const labelUpdates = ((pass2.describedUpdates || []) as IngredientItem[])
+
+      const finalDescribed = describedItems.map(item => {
+        const iName = (item.name as string).toLowerCase()
+        const isVisible = visibleNames.some((vn: string) => {
           const vnFirst = vn.split(' ')[0]
           const iFirst = iName.split(' ')[0]
           return vn.includes(iFirst) || iName.includes(vnFirst)
-        }),
-      }))
+        })
+
+        // Apply label data if pass 2 found a nutrition label for this item
+        const labelUpdate = labelUpdates.find((u: IngredientItem) => {
+          const uName = ((u.name as string) || '').toLowerCase()
+          const uFirst = uName.split(' ')[0]
+          const iFirst = iName.split(' ')[0]
+          return uName.includes(iFirst) || iName.includes(uFirst)
+        })
+
+        if (labelUpdate) {
+          return {
+            ...item,
+            visibleInPhoto: true,
+            estimatedG: labelUpdate.estimatedG ?? item.estimatedG,
+            per100: labelUpdate.per100 ?? item.per100,
+            reasoning: (item.reasoning as string || '') + ' [nutritional values from product label]',
+          }
+        }
+
+        return { ...item, visibleInPhoto: isVisible }
+      })
 
       // Visual-only items from photo
       const additionalItems = ((pass2.additional || []) as IngredientItem[]).map(item => ({
