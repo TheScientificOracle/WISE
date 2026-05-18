@@ -1,7 +1,7 @@
 # WISE — Project Context
 _Handover file for new Claude sessions._
 
-**Last updated:** 2026-05-14 | **Current version:** v4.0
+**Last updated:** 2026-05-18 | **Current version:** v4.2
 
 ---
 
@@ -52,7 +52,7 @@ Supabase client initialised as `sb`. Tabler icons used for tab bar and UI elemen
 ### Edge Functions (all deployed ✅)
 | Function | Purpose | Last deployed |
 |----------|---------|--------------|
-| `wise-analyse` | Photo or text meal analysis → returns analysis JSON | 2026-05-14 (v3.8) |
+| `wise-analyse` | Photo or text meal analysis → returns analysis JSON | 2026-05-18 (v4.2) — two-pass mode |
 | `wise-fuel` | Fuel plan generation → returns meal plan JSON | 2026-05-13 |
 | `wise-shop` | Weekly shopping list from ingredient history + deficits | 2026-05-14 (v4.0) |
 

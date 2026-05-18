@@ -1,5 +1,14 @@
 # WISE — Changelog
 
+## v4.2 — 2026-05-18
+
+### What changed
+- **Two-pass analysis for photo + description** — When a user provides both a photo and a description, wise-analyse now makes two separate API calls instead of one. Pass 1 runs the description as a pure text analysis — every mentioned food and drink is extracted with authoritative weights (or standard estimates if no weight given). Pass 2 analyses the photo only to (a) confirm which described items are visible, and (b) spot any additional ingredients the user didn't mention. Results are merged: described items tagged `source:'described'` with `visibleInPhoto` set from pass 2, visual extras tagged `source:'visual'`. This eliminates the previous failure mode where unweighted items (e.g. "coconut flat white") were silently dropped because the photo model treated them as context/titles rather than ingredients.
+- **Friendly 529 error message** — All three AI endpoints (analyse, fuel, shopping list) now show "WISE is very popular right now — the AI is temporarily busy. Give it a moment and try again." instead of raw "Anthropic API error: 529".
+- **Home screen micro badge threshold raised 40%→60%** — Micronutrients card on home screen now appears when any nutrient is below 60% of RDA (previously 40%), matching the "LOW" threshold used in the gaps screen.
+- **"What you should eat" subtitle removed** — The auto-generated "protein & carb & fibre gaps" subtitle under the home screen card was removed. The gap count badge on the right already conveys the same information more cleanly.
+- **Two-tier ingredient breakdown** — Ingredient list now splits into described items (green "confirmed in photo" / blue "not in photo — you said so" badges) and a collapsed "WISE also spotted" section for visual-only additions. Spotted items can be dismissed with ✕ which removes them and updates saved totals. Yellow banner appears when spotted items are present.
+
 ## v4.0 — 2026-05-14
 
 ### What changed
