@@ -3,7 +3,9 @@
 ## v4.3 — 2026-05-18
 
 ### What changed
-- **Label reading in two-pass mode** — Pass 2 now includes a `describedUpdates` field. When the photo contains a nutrition label (a product bottle, tin, box, or package) for any described item, pass 2 extracts the exact per100 values from that label and calculates the correct `estimatedG` from the user's quantity description (e.g. "half a bottle" of a 330ml bottle → 165g). The merge step applies these label-sourced values over pass 1's generic text estimates. Items updated from a label have `[nutritional values from product label]` appended to their reasoning. This fixes the regression where described items like "half a bottle of this protein shake" received generic milk values instead of the values printed on the label in the photo.
+- **Label reading in two-pass mode** — Pass 2 now includes a `describedUpdates` field. When the photo contains a nutrition label (a product bottle, tin, box, or package) for any described item, pass 2 extracts the exact per100 values from that label and calculates the correct `estimatedG` from the user's quantity description (e.g. "half a bottle" of a 330ml bottle → 165g). The merge step applies these label-sourced values over pass 1's generic text estimates. Items updated from a label have `[nutritional values from product label]` appended to their reasoning.
+- **Deictic reference handling in pass 1** — Pass 1 (text-only) now explicitly handles descriptions like "half a bottle of this protein shake" or "a bowl of this soup". Previously the word "this" confused the text-only model into returning an empty identified array. The prompt now instructs the model to strip "this/these" and analyse the named food with generic USDA values as a baseline.
+- **Safety net: empty pass 1 falls back to single-pass** — If pass 1 returns 0 identified items despite the above fix, the function falls back to a single combined call with both photo and description. This ensures we never silently return 0-macro results for a described meal. The fallback prompt tells the model to use the description for quantity and the photo for identification and label reading.
 
 ## v4.2 — 2026-05-18
 

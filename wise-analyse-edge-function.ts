@@ -229,13 +229,39 @@ Deno.serve(async (req) => {
         'If no weight is given, use a sensible standard estimate ' +
         '(e.g. "coconut flat white" → 240ml, "espresso" → 30ml, "glass of juice" → 250ml, ' +
         '"banana" → 118g, "apple" → 182g, "coffee" → 240ml). ' +
-        'Never drop any mentioned item.' +
+        'Never drop any mentioned item.\n\n' +
+        'DEICTIC REFERENCES: The user may write "this [food]" or "these [foods]" to point at something in their photo (e.g. "half a bottle of this protein shake", "a bowl of this soup", "some of these crackers"). ' +
+        'Treat these exactly as "[food]" — strip the word "this/these" and analyse the named food using a sensible generic estimate. ' +
+        '"half a bottle of this protein shake" → protein shake, estimatedG: 165. ' +
+        '"a bowl of this soup" → soup, estimatedG: 300. ' +
+        'Never return an empty identified array because of deictic references. Use generic USDA values for the food type named.' +
         `\n\nFood to analyse: ${userNote}`
 
       const pass1Raw = await callAnthropic(anthropicKey, [{ type: 'text', text: pass1Prompt }])
       const pass1 = parseJSON(pass1Raw)
       type IngredientItem = Record<string, unknown>
-      const describedItems: IngredientItem[] = ((pass1.identified || []) as IngredientItem[]).map(item => ({
+      const rawIdentified = (pass1.identified || []) as IngredientItem[]
+
+      // Safety net: if pass 1 returned 0 items (e.g. overly deictic description like
+      // "half a bottle of this protein shake" with no recognisable food), fall back to
+      // single-pass with photo + description so the model can use visual context.
+      if (rawIdentified.length === 0) {
+        const fallbackPrompt = BASE_PROMPT + ctxNote + fatInstruction +
+          '\n\nThe user has provided BOTH a photo AND a description of their meal. ' +
+          'The description tells you what they ate and how much. Use the photo to identify the food and read any visible nutrition labels. ' +
+          'Set "ambiguous": false and return a complete analysis.\n\n' +
+          `User description: ${userNote}\n\nAnalyse this food now.`
+        const fallbackRaw = await callAnthropic(
+          anthropicKey,
+          [...images.map(imageContent), { type: 'text', text: fallbackPrompt }]
+        )
+        const fallbackResult = parseJSON(fallbackRaw)
+        return new Response(JSON.stringify(fallbackResult), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
+      const describedItems: IngredientItem[] = rawIdentified.map(item => ({
         ...item,
         source: 'described',
         visibleInPhoto: false, // updated by pass 2
