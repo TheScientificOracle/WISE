@@ -285,6 +285,7 @@ const state = {
   currentLogId: null,          // id of the last saved meal_logs row — used to UPDATE on edit
   ingredientsVerified: null,   // null | 'yes' | 'no'
   ingredientsExpanded: false,
+  spottedExpanded: false,      // whether "WISE also spotted" section is open
   ingredientRows: [{name:'',qty:'',unit:'g'},{name:'',qty:'',unit:'g'},{name:'',qty:'',unit:'g'},{name:'',qty:'',unit:'g'}],
   mealSlot: null,              // 'breakfast' | 'lunch' | 'dinner' | 'snack' | null
   mealDate: localDateStr(), // YYYY-MM-DD, defaults to today (local time), backdatable
@@ -313,6 +314,7 @@ function setState(patch) {
   if (patch.screen && patch.screen !== 'results') {
     if (!('ingredientsVerified' in patch)) patch.ingredientsVerified = null;
     if (!('ingredientsExpanded' in patch)) patch.ingredientsExpanded = false;
+    if (!('spottedExpanded' in patch)) patch.spottedExpanded = false;
   }
   Object.assign(state, patch);
   saveSessionState();
@@ -2382,6 +2384,48 @@ function renderResults() {
     </div>
 
     <!-- Ingredient breakdown — first so user verifies before trusting the numbers -->
+    ${(() => {
+      // Determine if we have source-tagged data (photo + description analyses)
+      const hasSourceTags = r.identified.some(i => i.source === 'described');
+      const describedItems = hasSourceTags ? r.identified.filter(i => i.source === 'described') : r.identified;
+      const visualItems    = hasSourceTags ? r.identified.filter(i => i.source === 'visual')    : [];
+      const hasSpotted     = visualItems.length > 0;
+
+      const srcBadge = (item) => {
+        if (!hasSourceTags) return '';
+        if (item.visibleInPhoto) {
+          return `<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;padding:1px 7px;border-radius:99px;background:#f0fdf4;color:#166534;margin-top:3px;font-weight:400">✓ confirmed in photo</span>`;
+        }
+        return `<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;padding:1px 7px;border-radius:99px;background:#eff6ff;color:#1e40af;margin-top:3px;font-weight:400">not in photo — you said so</span>`;
+      };
+
+      const ingRowView = (item, i, isVisual) => `
+        <div class="ing-row" style="${isVisual ? 'opacity:0.6' : ''}">
+          <span class="ing-emoji" onclick="toggleExpand(${i})" style="cursor:pointer">${item.emoji || '🍽️'}</span>
+          <div style="flex:1;cursor:pointer;min-width:0" onclick="toggleExpand(${i})">
+            <div class="ing-name" style="${isVisual ? 'color:var(--subtle)' : ''}">${item.name}</div>
+            ${isVisual
+              ? `<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;padding:1px 7px;border-radius:99px;background:#f3f4f6;color:#6b7280;margin-top:3px;font-weight:400">👁 spotted in photo · ${(item.confidence||'Medium').toLowerCase()} confidence</span>`
+              : srcBadge(item)}
+            ${state.expandedIdx === i ? `
+              <div class="ing-note" style="margin-top:4px">"${item.reasoning}"</div>
+              <div class="expand-detail">
+                <div class="expand-cell" style="background:var(--protein-bg)"><div class="expand-val" style="color:var(--protein)">${((item.per100?.protein||0)*item.estimatedG/100).toFixed(1)}g</div><div class="expand-lbl">Protein</div></div>
+                <div class="expand-cell" style="background:var(--fat-bg)"><div class="expand-val" style="color:var(--fat)">${((item.per100?.fat||0)*item.estimatedG/100).toFixed(1)}g</div><div class="expand-lbl">Fat</div></div>
+                <div class="expand-cell" style="background:var(--carbs-bg)"><div class="expand-val" style="color:var(--carbs)">${((item.per100?.carbs||0)*item.estimatedG/100).toFixed(1)}g</div><div class="expand-lbl">Carbs</div></div>
+                <div class="expand-cell" style="background:var(--fibre-bg)"><div class="expand-val" style="color:var(--fibre)">${((item.per100?.fibre||0)*item.estimatedG/100).toFixed(1)}g</div><div class="expand-lbl">Fibre</div></div>
+              </div>` : ''}
+          </div>
+          <div class="ing-right" style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
+            <div class="ing-grams" onclick="toggleExpand(${i})" style="cursor:pointer;${isVisual ? 'color:var(--subtle)' : ''}">~${item.estimatedG}g</div>
+            ${state.expandedIdx === i ? confBadge(item.confidence || 'Medium') : ''}
+            ${isVisual
+              ? `<button onclick="removeSpottedIngredient(${i})" title="Remove" style="background:none;border:none;cursor:pointer;color:#d1d5db;padding:0;line-height:1;font-size:13px;margin-top:3px">✕</button>`
+              : `<div style="font-size:10px;color:#d1d5db;cursor:pointer;margin-top:4px" onclick="toggleExpand(${i})">${state.expandedIdx === i ? '▲' : '▼'}</div>`}
+          </div>
+        </div>`;
+
+      return `
     <button id="ingredient-breakdown" onclick="setState({ingredientsExpanded:!state.ingredientsExpanded})"
       style="width:100%;display:flex;align-items:center;justify-content:space-between;background:white;border:1px solid var(--border);border-radius:${showIngredients ? '12px 12px 0 0' : '12px'};padding:12px 16px;margin-bottom:${showIngredients ? '0' : '12px'};cursor:pointer;box-shadow:var(--shadow)">
       <span style="font-size:13px;color:var(--subtle)">🥦 Ingredient breakdown <span style="color:var(--muted);font-size:12px">(${r.identified.length} items)</span></span>
@@ -2389,6 +2433,7 @@ function renderResults() {
     </button>
     ${showIngredients ? `
     <div class="card" style="border-top-left-radius:0;border-top-right-radius:0;border-top:none;margin-bottom:12px">
+      ${hasSpotted ? `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#92400e;line-height:1.5">⚠ WISE spotted ${visualItems.length} extra ingredient${visualItems.length>1?'s':''} not in your description — included for now. Review the "${visualItems.length === 1 ? 'WISE also spotted' : 'WISE also spotted'}" section below.</div>` : ''}
       ${state.ingredientsVerified === 'no' ? `
       <p style="font-size:12px;color:var(--subtle);margin-bottom:14px">Edit the name or gram amount for any ingredient below, then tap Save corrections.</p>
       ${r.identified.map((item, i) => `
@@ -2409,28 +2454,18 @@ function renderResults() {
         </div>`).join('')}
       <button onclick="addCorrIngredient()" style="width:100%;padding:10px;border-radius:12px;border:1px dashed var(--border);background:white;color:var(--subtle);font-size:13px;cursor:pointer;margin-top:10px">+ Add ingredient</button>
       <button onclick="saveCorrectedIngredients()" style="width:100%;padding:13px;border-radius:12px;border:none;background:#111;color:white;font-size:14px;font-weight:600;cursor:pointer;margin-top:8px">Save corrections</button>` : `
-      ${r.identified.map((item, i) => `
-        <div class="ing-row">
-          <span class="ing-emoji" onclick="toggleExpand(${i})" style="cursor:pointer">${item.emoji || '🍽️'}</span>
-          <div style="flex:1;cursor:pointer" onclick="toggleExpand(${i})">
-            <div class="ing-name">${item.name}</div>
-            ${state.expandedIdx === i ? `
-              <div class="ing-note" style="margin-top:4px">"${item.reasoning}"</div>
-              <div class="expand-detail">
-                <div class="expand-cell" style="background:var(--protein-bg)"><div class="expand-val" style="color:var(--protein)">${((item.per100?.protein||0)*item.estimatedG/100).toFixed(1)}g</div><div class="expand-lbl">Protein</div></div>
-                <div class="expand-cell" style="background:var(--fat-bg)"><div class="expand-val" style="color:var(--fat)">${((item.per100?.fat||0)*item.estimatedG/100).toFixed(1)}g</div><div class="expand-lbl">Fat</div></div>
-                <div class="expand-cell" style="background:var(--carbs-bg)"><div class="expand-val" style="color:var(--carbs)">${((item.per100?.carbs||0)*item.estimatedG/100).toFixed(1)}g</div><div class="expand-lbl">Carbs</div></div>
-                <div class="expand-cell" style="background:var(--fibre-bg)"><div class="expand-val" style="color:var(--fibre)">${((item.per100?.fibre||0)*item.estimatedG/100).toFixed(1)}g</div><div class="expand-lbl">Fibre</div></div>
-              </div>` : ''}
-          </div>
-          <div class="ing-right" style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
-            <div class="ing-grams" onclick="toggleExpand(${i})" style="cursor:pointer">~${item.estimatedG}g</div>
-            ${state.expandedIdx === i ? confBadge(item.confidence || 'Medium') : ''}
-            <div style="font-size:10px;color:#d1d5db;cursor:pointer;margin-top:4px" onclick="toggleExpand(${i})">${state.expandedIdx === i ? '▲' : '▼'}</div>
-          </div>
-        </div>`).join('')}
+      ${describedItems.map(item => ingRowView(item, r.identified.indexOf(item), false)).join('')}
+      ${hasSpotted ? `
+      <div style="border-top:1px dashed #e5e7eb;margin-top:8px;padding-top:4px">
+        <button onclick="setState({spottedExpanded:!state.spottedExpanded})" style="width:100%;display:flex;align-items:center;justify-content:space-between;background:none;border:none;padding:8px 0;cursor:pointer;text-align:left">
+          <span style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--subtle);text-transform:uppercase;letter-spacing:0.05em">👁 WISE also spotted <span style="font-weight:400;font-size:11px;text-transform:none;letter-spacing:0;color:var(--muted)">— not in your description</span></span>
+          <span style="font-size:11px;color:var(--muted);flex-shrink:0">${state.spottedExpanded ? 'hide ▲' : `show ${visualItems.length} ▼`}</span>
+        </button>
+        ${state.spottedExpanded ? visualItems.map(item => ingRowView(item, r.identified.indexOf(item), true)).join('') : ''}
+      </div>` : ''}
       <button onclick="setState({ingredientsVerified:'no',ingredientsExpanded:true})" style="margin-top:10px;background:none;border:none;font-size:12px;color:var(--muted);cursor:pointer;text-decoration:underline;padding:0">Something look wrong? Edit ingredients →</button>`}
-    </div>` : ''}
+    </div>` : ''}`;
+    })()}
 
     <!-- THE VERDICT -->
     <div class="label" style="font-weight:700;margin-bottom:8px">The Verdict</div>
@@ -3337,6 +3372,12 @@ function saveCorrectedIngredients() {
     expandedIdx: null,
     editingIdx: null,
   });
+  updateMealLog(identified);
+}
+
+function removeSpottedIngredient(idx) {
+  const identified = state.analysisResult.identified.filter((_, i) => i !== idx);
+  setState({ analysisResult: { ...state.analysisResult, identified } });
   updateMealLog(identified);
 }
 
